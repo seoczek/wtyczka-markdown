@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wtyczka Markdown</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">Wtyczka Markdown</div>
+          <h1 id="title">Zaznaczenie do Markdown</h1>
+        </div>
+        <button id="shortcutBtn" class="shortcut" type="button" title="Zmień skrót w ustawieniach Chrome">
+          <span id="shortcutLabel">Ctrl/Control + Shift + Y</span>
+          <span class="shortcut-action">Edytuj</span>
+        </button>
+      </header>
+
+      <section class="panel controls-panel" aria-label="Akcje">
+        <label class="switch">
+          <input id="collectMode" type="checkbox" />
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-label">Zbieraj do sesji</span>
+        </label>
+
+        <div class="actions">
+          <button id="convertBtn" class="primary" type="button">
+            Konwertuj zaznaczenie
+          </button>
+          <button id="captureBtn" class="secondary" type="button" disabled>
+            Dodaj wynik do sesji
+          </button>
+          <button id="copyBtn" class="secondary" type="button" disabled>
+            Kopiuj widok
+          </button>
+        </div>
+
+        <div class="session-actions">
+          <button id="copySessionBtn" class="secondary session-copy" type="button" disabled>
+            Kopiuj całą sesję
+          </button>
+          <button id="clearSessionBtn" class="secondary ghost" type="button" disabled>
+            Wyczyść sesję
+          </button>
+        </div>
+
+        <div id="status" class="status" role="status" aria-live="polite">
+          Gotowe. Zaznacz tekst na stronie i kliknij konwersję.
+        </div>
+      </section>
+
+      <section class="panel preview" aria-label="Podgląd Markdown">
+        <div class="panel-head">
+          <h2>Podgląd</h2>
+          <span id="meta" class="meta">Brak wyniku</span>
+        </div>
+        <div class="preview-tabs" role="tablist" aria-label="Widok podglądu">
+          <button id="resultViewBtn" class="view-toggle active" type="button">Wynik</button>
+          <button id="sessionViewBtn" class="view-toggle" type="button">Sesja</button>
+        </div>
+        <textarea
+          id="markdownOutput"
+          class="output"
+          rows="18"
+          readonly
+          spellcheck="false"
+          placeholder="Tutaj pojawi się Markdown z zaznaczonego fragmentu."
+        ></textarea>
+      </section>
+    </main>
+
+    <script src="src/session.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

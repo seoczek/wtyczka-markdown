@@ -1,0 +1,363 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f4ef;
+  --panel: #ffffff;
+  --panel-border: #ded9ce;
+  --text: #1c1b18;
+  --muted: #6c675d;
+  --accent: #1f5f4a;
+  --accent-strong: #184a39;
+  --warning: #8e5b16;
+  --success: #1f6a3f;
+  --shadow: 0 12px 28px rgba(54, 43, 26, 0.08);
+  --radius: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  width: 500px;
+  min-height: 680px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  padding: 16px;
+}
+
+.shell {
+  display: grid;
+  gap: 12px;
+}
+
+.topbar,
+.panel {
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 22px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.shortcut {
+  appearance: none;
+  display: inline-grid;
+  gap: 4px;
+  text-align: right;
+  white-space: nowrap;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: #f3f7f4;
+  border: 1px solid #d6e4dc;
+  color: var(--accent-strong);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.shortcut-action {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.shortcut:not(:disabled):hover {
+  background: #e9f3ee;
+}
+
+.panel {
+  padding: 14px;
+}
+
+.controls-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.session-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+button {
+  appearance: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease,
+    color 140ms ease,
+    opacity 140ms ease;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.primary,
+.secondary {
+  border-radius: 12px;
+  min-height: 42px;
+  padding: 0 14px;
+}
+
+.primary {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.primary:not(:disabled):hover {
+  box-shadow: none;
+}
+
+.secondary {
+  background: #f7f5ef;
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+}
+
+.secondary.ghost {
+  background: transparent;
+}
+
+.session-copy {
+  background: #e9f3ee;
+  border-color: #d3e4dc;
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 13px;
+  user-select: none;
+  min-height: 42px;
+  padding: 0 2px;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switch-track {
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: #d5d0c5;
+  position: relative;
+  flex: 0 0 auto;
+  transition: background 140ms ease;
+}
+
+.switch-track::after {
+  content: "";
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  transition: transform 140ms ease;
+}
+
+.switch input:checked + .switch-track {
+  background: rgba(31, 95, 74, 0.72);
+}
+
+.switch input:checked + .switch-track::after {
+  transform: translateX(18px);
+}
+
+.switch-label {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.status {
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: #f3f7f4;
+  color: var(--accent-strong);
+  font-size: 12px;
+  line-height: 1.45;
+  min-height: 42px;
+  border: 1px solid #d6e4dc;
+}
+
+.status.is-warning {
+  background: rgba(142, 91, 22, 0.09);
+  color: var(--warning);
+  border-color: rgba(142, 91, 22, 0.14);
+}
+
+.status.is-success {
+  background: rgba(31, 106, 63, 0.1);
+  color: var(--success);
+  border-color: rgba(31, 106, 63, 0.14);
+}
+
+.status.is-error {
+  background: rgba(175, 52, 52, 0.09);
+  color: #a63a3a;
+  border-color: rgba(175, 52, 52, 0.14);
+}
+
+.preview {
+  padding: 14px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.panel-head h2 {
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.preview-tabs {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 4px;
+  border-radius: 14px;
+  background: #f7f5ef;
+  border: 1px solid var(--panel-border);
+}
+
+.view-toggle {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.view-toggle.active {
+  background: #e9f3ee;
+  color: var(--accent-strong);
+  border: 1px solid #d3e4dc;
+}
+
+.output {
+  width: 100%;
+  min-height: 420px;
+  resize: none;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: #fcfbf8;
+  color: var(--text);
+  padding: 14px;
+  line-height: 1.55;
+  font-family:
+    "SFMono-Regular", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  outline: none;
+}
+
+.output::placeholder {
+  color: #8b8376;
+}
+
+.output:focus {
+  border-color: #9eb9ad;
+  box-shadow: 0 0 0 3px rgba(31, 95, 74, 0.08);
+}
+
+@media (max-width: 620px) {
+  html,
+  body {
+    min-height: 100%;
+  }
+
+  .topbar,
+  .actions {
+    grid-template-columns: 1fr;
+  }
+
+  .session-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    align-items: flex-start;
+  }
+
+  .shortcut {
+    white-space: normal;
+  }
+
+  .switch-label,
+  .meta {
+    white-space: normal;
+  }
+}

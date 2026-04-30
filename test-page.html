@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wtyczka Markdown - strona testowa</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f1ea;
+      --paper: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #0f766e;
+      --line: #d6d3d1;
+      --danger: #7c2d12;
+      --soft: #fdf7ed;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, var(--bg), #ece8df 100%);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .wrap {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 20px 64px;
+    }
+
+    header {
+      margin-bottom: 24px;
+      padding: 24px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.06);
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3 {
+      line-height: 1.2;
+      margin-top: 0;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.9fr) minmax(280px, 0.8fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    article, aside, section {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 22px;
+      margin-bottom: 20px;
+    }
+
+    article h2 {
+      margin-bottom: 10px;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .ad, .promo, .cookie, .newsletter, .widget, .related {
+      background: linear-gradient(180deg, #fff7ed, var(--soft));
+      border: 1px dashed #f59e0b;
+    }
+
+    .ad::before, .promo::before, .cookie::before, .newsletter::before, .widget::before, .related::before {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--danger);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      content: "Sekcja podobna do reklamy / szumu";
+    }
+
+    blockquote {
+      margin: 0;
+      padding: 12px 16px;
+      border-left: 4px solid var(--accent);
+      background: #ecfeff;
+    }
+
+    pre {
+      overflow: auto;
+      padding: 16px;
+      background: #111827;
+      color: #f9fafb;
+      border-radius: 14px;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .hidden-sample {
+      display: none;
+    }
+
+    .badge {
+      display: inline-block;
+      margin-right: 8px;
+      margin-bottom: 8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      color: #075985;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    ul, ol {
+      padding-left: 22px;
+    }
+
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="eyebrow">Chrome MV3 test page</div>
+      <h1>Strona testowa do konwersji zaznaczenia na Markdown</h1>
+      <p class="meta">Zaznacz dowolny fragment i uruchom rozszerzenie. Na stronie są elementy wartościowe, szum do odfiltrowania i różne warianty HTML.</p>
+    </header>
+
+    <div class="layout">
+      <main>
+        <article id="main-article">
+          <h2>Artykuł główny</h2>
+          <p>To jest przykładowy tekst po polsku z <strong>pogrubieniem</strong>, <em>kursywą</em> i <a href="https://example.com">linkiem referencyjnym</a>. Celem testu jest sprawdzenie, czy zaznaczony fragment zostanie poprawnie zamieniony na Markdown.</p>
+
+          <h3>Lista punktowana</h3>
+          <ul>
+            <li>Pierwszy punkt z prostą treścią.</li>
+            <li>Drugi punkt z <strong>wyróżnieniem</strong> i dodatkowym opisem.</li>
+            <li>Trzeci punkt z odnośnikiem do <a href="https://developer.mozilla.org/">MDN</a>.</li>
+          </ul>
+
+          <h3>Lista numerowana</h3>
+          <ol>
+            <li>Zbierz zaznaczony fragment.</li>
+            <li>Usuń szum i elementy poboczne.</li>
+            <li>Zamień HTML na Markdown.</li>
+          </ol>
+
+          <h3>Cytat</h3>
+          <blockquote>
+            <p>To jest cytat, który powinien wyjść jako blok quote w Markdown.</p>
+          </blockquote>
+
+          <h3>Kod</h3>
+          <pre><code>function hello(name) {
+  return `Cześć, ${name}!`;
+}</code></pre>
+
+          <h3>Tabela</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Element</th>
+                <th>Oczekiwany wynik</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Nagłówek</td>
+                <td><code>#</code>, <code>##</code>, <code>###</code></td>
+              </tr>
+              <tr>
+                <td>Link</td>
+                <td><code>[tekst](url)</code></td>
+              </tr>
+              <tr>
+                <td>Cytat</td>
+                <td><code>&gt; ...</code></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>Checklista</h3>
+          <ul>
+            <li><label><input type="checkbox" checked> Zachowaj strukturę listy z oznaczeniem wykonania.</label></li>
+            <li><label><input type="checkbox"> Pokaż niewykonany krok jako element checklisty.</label></li>
+          </ul>
+
+          <h3>Lista definicji</h3>
+          <dl>
+            <dt>Value proposition</dt>
+            <dd>Krótki opis głównej obietnicy produktu lub usługi.</dd>
+            <dt>CTA</dt>
+            <dd>Element prowadzący do działania, na przykład „Umów demo”.</dd>
+          </dl>
+
+          <h3>Szczegóły i rozwinięcie</h3>
+          <details open>
+            <summary>Dlaczego to ważne</summary>
+            <p>Ta sekcja testuje rozwijane elementy, które często pojawiają się na landing page'ach i w FAQ.</p>
+          </details>
+
+          <h3>Obraz z opisem</h3>
+          <figure>
+            <img alt="Makieta porównania treści konkurencji" />
+            <figcaption>Opis alternatywny obrazu powinien zostać zachowany w Markdown.</figcaption>
+          </figure>
+
+          <p>Na końcu akapitu są polskie znaki: ą, ć, ę, ł, ń, ó, ś, ź, ż. To ważny przypadek dla poprawności eksportu.</p>
+        </article>
+
+        <section class="related">
+          <h2>Treści powiązane</h2>
+          <p>Ta sekcja ma wyglądać jak widget lub blok poboczny. W realnym CMS-ie takie bloki często nie powinny trafiać do Markdown.</p>
+          <ul>
+            <li><a href="#">Zobacz też: inny wpis</a></li>
+            <li><a href="#">Powiązany poradnik</a></li>
+          </ul>
+        </section>
+
+        <section class="newsletter">
+          <h2>Newsletter</h2>
+          <p>To jest przykładowa sekcja do odfiltrowania. Zawiera formularzowe i marketingowe treści, które nie powinny wejść do Markdown.</p>
+          <p><label><input type="checkbox" checked> Zgadzam się na kontakt</label></p>
+        </section>
+      </main>
+
+      <aside>
+        <section class="ad">
+          <h2>Reklama 300x250</h2>
+          <p>Promocja produktu, CTA, baner i elementy wizualne do odfiltrowania.</p>
+        </section>
+
+        <section class="promo">
+          <h2>Oferta specjalna</h2>
+          <p>Jeszcze jedna sekcja marketingowa z dużą liczbą słów kluczowych i linków.</p>
+        </section>
+
+        <section class="widget">
+          <h2>Widget poboczny</h2>
+          <p>Przykład treści z sidebaru, która zwykle nie jest częścią głównego artykułu.</p>
+        </section>
+
+        <section class="cookie">
+          <h2>Baner cookies</h2>
+          <p>Ten blok symuluje komunikat o cookies, który powinien być ignorowany przez heurystyki.</p>
+        </section>
+
+        <section>
+          <h2>Znaczniki pomocnicze</h2>
+          <div class="badge">CMS</div>
+          <div class="badge">blog</div>
+          <div class="badge">opis produktu</div>
+          <p class="meta">Wszystkie te etykiety służą jedynie do testów selekcji i filtrowania.</p>
+        </section>
+
+        <section class="hidden-sample">
+          <h2>Ukryty element</h2>
+          <p>Ta treść nie powinna być brana pod uwagę, bo jest ukryta.</p>
+        </section>
+      </aside>
+    </div>
+  </div>
+</body>
+</html>

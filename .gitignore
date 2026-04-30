@@ -1,0 +1,11 @@
+.DS_Store
+AGENTS.md
+assets/icons/icon-source.png
+assets/icons/generated/
+node_modules/
+coverage/
+dist/
+*.crx
+*.pem
+*.zip
+npm-debug.log*
