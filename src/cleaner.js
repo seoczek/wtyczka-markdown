@@ -28,8 +28,7 @@
     "nav",
     "aside",
     "dialog",
-    "footer",
-    "summary"
+    "footer"
   ]);
 
   const JUNK_PATTERN =

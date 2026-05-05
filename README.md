@@ -110,7 +110,7 @@ Komenda sprawdza:
 
 ## Status
 
-Aktualna wersja: `0.1.0`
+Aktualna wersja: `0.1.1`
 
 Projekt jest na etapie pierwszej wersji open source. Działa lokalnie jako rozszerzenie ładowane ręcznie w Chrome.
 

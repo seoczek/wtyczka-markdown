@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1
+
+- Poprawiono zachowanie wciec w blokach kodu podczas konwersji do Markdown.
+- Poprawiono inline code zawierajacy backticki.
+- Poprawiono zagniezdzone listy punktowane i numerowane.
+- Zachowano tekst `summary` w elementach `details`, np. w FAQ i akordeonach.
+- Dodano testy regresyjne dla powyzszych przypadkow.
+
 ## 0.1.0
 
 - Dzialajace MVP rozszerzenia Chrome MV3.

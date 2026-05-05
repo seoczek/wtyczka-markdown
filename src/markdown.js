@@ -63,13 +63,58 @@
       .trim();
   }
 
+  function getFenceMarker(line) {
+    const match = String(line || "")
+      .trim()
+      .match(/^(`{3,}|~{3,})/);
+    return match ? match[1] : "";
+  }
+
+  function isClosingFence(line, openingMarker) {
+    const marker = getFenceMarker(line);
+    return Boolean(marker && openingMarker && marker[0] === openingMarker[0] && marker.length >= openingMarker.length);
+  }
+
   function collapseBlocks(value) {
-    return trimBlankLines(
-      String(value || "")
-        .replace(/[ \t]+\n/g, "\n")
-        .replace(/\n[ \t]+/g, "\n")
-        .replace(/\n{3,}/g, "\n\n")
-    );
+    const lines = String(value || "")
+      .replace(/\r\n?/g, "\n")
+      .split("\n");
+    const output = [];
+    let fenceMarker = "";
+    let blankLines = 0;
+
+    lines.forEach((rawLine) => {
+      if (fenceMarker) {
+        output.push(rawLine);
+        if (isClosingFence(rawLine, fenceMarker)) {
+          fenceMarker = "";
+          blankLines = 0;
+        }
+        return;
+      }
+
+      const line = rawLine.replace(/[ \t]+$/g, "");
+      const openingMarker = getFenceMarker(line);
+      if (openingMarker) {
+        output.push(line);
+        fenceMarker = openingMarker;
+        blankLines = 0;
+        return;
+      }
+
+      if (!line.trim()) {
+        blankLines += 1;
+        if (blankLines <= 2) {
+          output.push("");
+        }
+        return;
+      }
+
+      blankLines = 0;
+      output.push(line);
+    });
+
+    return trimBlankLines(output.join("\n"));
   }
 
   function prefixLines(value, prefix) {
@@ -99,10 +144,24 @@
     return String(value || "").replace(/\\/g, "\\\\").replace(/([\[\]])/g, "\\$1");
   }
 
-  function getFenceForCode(content) {
+  function getLongestBacktickRun(content) {
     const matches = String(content || "").match(/`+/g) || [];
-    const longest = matches.reduce((max, value) => Math.max(max, value.length), 0);
-    return "`".repeat(Math.max(3, longest + 1));
+    return matches.reduce((max, value) => Math.max(max, value.length), 0);
+  }
+
+  function getFenceForCode(content) {
+    return "`".repeat(Math.max(3, getLongestBacktickRun(content) + 1));
+  }
+
+  function serializeInlineCode(value) {
+    const content = escapeCode(value).trim();
+    if (!content) {
+      return "``";
+    }
+
+    const delimiter = "`".repeat(Math.max(1, getLongestBacktickRun(content) + 1));
+    const padding = delimiter.length > 1 ? " " : "";
+    return `${delimiter}${padding}${content}${padding}${delimiter}`;
   }
 
   function serializeChildren(parent, ctx) {
@@ -122,7 +181,7 @@
     return escapeMarkdownText(text);
   }
 
-  function serializeInline(node, ctx) {
+  function serializeInline(node, ctx, options) {
     let output = "";
     node.childNodes.forEach((child) => {
       if (child.nodeType === global.Node.TEXT_NODE) {
@@ -135,6 +194,10 @@
       }
 
       const tag = child.tagName.toLowerCase();
+      if (options?.skipNestedLists && isNestedList(child)) {
+        return;
+      }
+
       if (tag === "br") {
         output += "  \n";
         return;
@@ -278,10 +341,14 @@
   }
 
   function serializeListItem(item, ctx, ordered, index) {
-    const indent = "  ".repeat(ctx.listDepth || 0);
-    const continuationIndent = `${indent}  `;
-    const nestedCtx = { ...ctx, listDepth: (ctx.listDepth || 0) + 1 };
+    const indent = ctx.listIndent || "  ".repeat(ctx.listDepth || 0);
     const marker = ordered ? `${index + 1}. ` : "- ";
+    const continuationIndent = `${indent}${" ".repeat(marker.length)}`;
+    const nestedCtx = {
+      ...ctx,
+      listDepth: (ctx.listDepth || 0) + 1,
+      listIndent: continuationIndent
+    };
     let firstLineContent = "";
     const extraBlocks = [];
 
@@ -300,13 +367,13 @@
       if (tag === "ul" || tag === "ol") {
         const nestedList = trimBlankLines(serializeList(child, nestedCtx, tag === "ol"));
         if (nestedList) {
-          extraBlocks.push(indentBlock(nestedList, continuationIndent));
+          extraBlocks.push(nestedList);
         }
         return;
       }
 
       if (tag === "p" || tag === "div" || tag === "section" || tag === "article") {
-        const paragraph = collapseInline(serializeInline(child, ctx)).trim();
+        const paragraph = collapseInline(serializeInline(child, ctx, { skipNestedLists: true })).trim();
         if (!firstLineContent.trim()) {
           firstLineContent = paragraph;
         } else if (paragraph) {
@@ -320,7 +387,7 @@
               serializeList(nestedListNode, nestedCtx, nestedListNode.tagName.toLowerCase() === "ol")
             );
             if (nested) {
-              extraBlocks.push(indentBlock(nested, continuationIndent));
+              extraBlocks.push(nested);
             }
           });
 
@@ -454,11 +521,11 @@
       }
       case "kbd":
       case "samp":
-        return `\`${escapeCode(node.textContent || "").trim()}\``;
+        return serializeInlineCode(node.textContent || "");
       case "code":
         return node.parentElement && node.parentElement.tagName.toLowerCase() === "pre"
           ? escapeCode(node.textContent || "")
-          : `\`${escapeCode(node.textContent || "").trim()}\``;
+          : serializeInlineCode(node.textContent || "");
       case "pre":
         return serializePre(node);
       case "a":

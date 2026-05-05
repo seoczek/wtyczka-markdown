@@ -116,6 +116,52 @@ describe("Markdown runtime security", () => {
     expect(markdown).toContain("const sample = ```nested```;");
     expect(markdown).toContain("\n````");
   });
+
+  it("preserves code block indentation", () => {
+    const win = loadMarkdownRuntime();
+    const markdown = win.WMExt.markdown.htmlToMarkdown(`
+      <pre><code>function sample() {
+  if (ready) {
+    return 1;
+  }
+}</code></pre>
+    `);
+
+    expect(markdown).toContain("  if (ready) {");
+    expect(markdown).toContain("    return 1;");
+  });
+
+  it("uses a valid inline code delimiter when code contains backticks", () => {
+    const win = loadMarkdownRuntime();
+    const markdown = win.WMExt.markdown.htmlToMarkdown("<p>Uzyj <code>npm `test`</code> teraz.</p>");
+
+    expect(markdown).toBe("Uzyj `` npm `test` `` teraz.");
+  });
+
+  it("keeps nested lists nested without duplicating items", () => {
+    const win = loadMarkdownRuntime();
+    const markdown = win.WMExt.markdown.htmlToMarkdown(`
+      <ul>
+        <li>
+          <div>Parent
+            <ul>
+              <li>Child</li>
+            </ul>
+          </div>
+        </li>
+      </ul>
+    `);
+
+    expect(markdown).toBe("- Parent\n  - Child");
+    expect(markdown.match(/Child/g)).toHaveLength(1);
+  });
+
+  it("uses marker-aware indentation for nested ordered lists", () => {
+    const win = loadMarkdownRuntime();
+    const markdown = win.WMExt.markdown.htmlToMarkdown("<ol><li>Parent<ol><li>Child</li></ol></li></ol>");
+
+    expect(markdown).toBe("1. Parent\n   1. Child");
+  });
 });
 
 describe("Cleaner and image handling", () => {
@@ -160,6 +206,17 @@ describe("Cleaner and image handling", () => {
     expect(markdown).toContain(":root { color: red; }");
     expect(markdown).not.toContain("Zapisz sie");
     expect(markdown).not.toContain(".ad-banner");
+  });
+
+  it("keeps details summary text in smart mode", () => {
+    const win = loadCleanerAndMarkdownRuntime("https://example.com/faq");
+    const container = win.document.createElement("div");
+    container.innerHTML = "<details><summary>Ile kosztuje dostawa?</summary><p>Dostawa kosztuje 15 zl.</p></details>";
+
+    win.WMExt.cleaner.sanitizeSelectionContainer(container, { mode: "smart" });
+    const markdown = win.WMExt.markdown.htmlToMarkdown(container);
+
+    expect(markdown).toBe("**Ile kosztuje dostawa?**\n\nDostawa kosztuje 15 zl.");
   });
 });
 
