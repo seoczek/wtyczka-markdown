@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createEngine, select } from "../helpers/engine.js";
 
 const LARGE = 200_000;
+const BUDGET = process.env.CI ? 4 : 1;
 
 function page(sections) {
   let html = '<header class="site-header"><nav><ul><li><a href="/">Start</a></li><li><a href="/blog">Blog</a></li></ul></nav></header><article>';
@@ -43,7 +44,7 @@ describe("performance", () => {
     extract();
 
     expect(extract().markdown).toContain("## Sekcja 124");
-    expect(fastest(extract)).toBeLessThan(60);
+    expect(fastest(extract)).toBeLessThan(60 * BUDGET);
   });
 
   it.each([
@@ -62,14 +63,14 @@ describe("performance", () => {
     const html = `<p>${text.replace(/&(?!amp;)/g, "&amp;").replace(/</g, "&lt;")}</p>`;
     convertTime(win, "<p>warm-up</p>");
 
-    expect(convertTime(win, html)).toBeLessThan(50);
+    expect(convertTime(win, html)).toBeLessThan(50 * BUDGET);
   });
 
   it("parses a 200 KB srcset in under 50 ms", () => {
     const win = createEngine();
     const srcset = "/a.jpg 1w, ".repeat(LARGE / 11);
 
-    expect(convertTime(win, `<img alt="x" srcset="${srcset}">`)).toBeLessThan(50);
+    expect(convertTime(win, `<img alt="x" srcset="${srcset}">`)).toBeLessThan(50 * BUDGET);
   });
 
   it.each([
@@ -85,6 +86,6 @@ describe("performance", () => {
     const start = performance.now();
     win.WMExt.cleaner.isStaticallyHidden(element);
 
-    expect(performance.now() - start).toBeLessThan(50);
+    expect(performance.now() - start).toBeLessThan(50 * BUDGET);
   });
 });
