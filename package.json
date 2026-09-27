@@ -1,18 +1,26 @@
 {
   "name": "wtyczka-markdown",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
-  "description": "Rozszerzenie Chrome MV3 do konwersji zaznaczonego fragmentu strony na Markdown.",
+  "description": "Chrome MV3 extension that converts the selected part of a page into clean Markdown.",
   "type": "module",
   "scripts": {
-    "audit": "npm audit --audit-level=moderate",
-    "check:syntax": "node scripts/check-syntax.js",
-    "lint": "node scripts/lint-runtime.js",
+    "lint": "eslint . && node scripts/check-extension.js",
     "test": "vitest run",
-    "verify": "npm run check:syntax && npm run lint && npm test && npm run audit"
+    "test:e2e": "playwright test",
+    "audit": "npm audit --audit-level=moderate",
+    "pack": "node scripts/pack.js",
+    "verify": "npm run lint && npm test && npm run audit"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0",
     "jsdom": "^29.1.1",
     "vitest": "^4.1.5"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

@@ -1,233 +1,182 @@
-(function (global) {
-  const WMExt = (global.WMExt = global.WMExt || {});
-
+(() => {
+  const WMExt = (globalThis.WMExt ??= {});
   const SESSION_KEY = "wm-session";
-  const DEFAULT_SESSION = {
-    entries: [],
-    updatedAt: ""
-  };
+  const QUOTA_WARNING_BYTES = 8 * 1024 * 1024;
+  const CHARS_PER_TOKEN = 3.5;
+  const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+  const HEADING = /^ {0,3}(#{1,6})(?=[ \t]|$)/;
 
-  function getStorageArea(runtime) {
-    return runtime?.chrome?.storage?.local || null;
-  }
+  const text = (value) => (typeof value === "string" ? value.trim() : "");
 
-  function normalizeString(value) {
-    return typeof value === "string" ? value.trim() : "";
-  }
-
-  function normalizeWordCount(value) {
-    return Number.isFinite(value) && value >= 0 ? Math.round(value) : 0;
-  }
-
-  function normalizeEntry(entry, index) {
+  function normalizeEntry(entry) {
     const value = entry && typeof entry === "object" ? entry : {};
+    const markdown = text(value.markdown);
     return {
-      id: normalizeString(value.id) || `entry-${index + 1}`,
-      title: normalizeString(value.title),
-      section: normalizeString(value.section),
-      url: normalizeString(value.url),
-      domain: normalizeString(value.domain),
+      id: text(value.id) || crypto.randomUUID(),
+      title: text(value.title),
+      section: text(value.section),
+      url: text(value.url),
+      domain: text(value.domain) || getDomain(value.url),
       mode: value.mode === "strict" ? "strict" : "smart",
-      trigger: normalizeString(value.trigger),
-      capturedAt: normalizeString(value.capturedAt),
-      wordCount: normalizeWordCount(value.wordCount),
-      markdown: normalizeString(value.markdown)
+      capturedAt: text(value.capturedAt),
+      wordCount: Number.isInteger(value.wordCount) && value.wordCount >= 0 ? value.wordCount : countWords(markdown),
+      markdown
     };
   }
 
-  function normalizeSession(session) {
-    const value = session && typeof session === "object" ? session : {};
-    return {
-      entries: Array.isArray(value.entries)
-        ? value.entries
-            .map((entry, index) => normalizeEntry(entry, index))
-            .filter((entry) => entry.markdown)
-        : [],
-      updatedAt: normalizeString(value.updatedAt)
-    };
+  function normalize(session) {
+    const entries = Array.isArray(session?.entries) ? session.entries.map(normalizeEntry).filter((entry) => entry.markdown) : [];
+    return { entries, updatedAt: text(session?.updatedAt) };
   }
 
-  function readSession(runtime) {
-    const storage = getStorageArea(runtime || global);
-    if (!storage) {
-      return Promise.resolve({ ...DEFAULT_SESSION });
-    }
-
-    return new Promise((resolve) => {
-      storage.get(SESSION_KEY, (result) => {
-        if (runtime?.chrome?.runtime?.lastError || global.chrome?.runtime?.lastError) {
-          resolve({ ...DEFAULT_SESSION });
-          return;
-        }
-
-        resolve(normalizeSession(result[SESSION_KEY]));
-      });
-    });
-  }
-
-  function writeSession(session, runtime) {
-    const storage = getStorageArea(runtime || global);
-    const normalized = normalizeSession(session);
-    if (!storage) {
-      return Promise.resolve(normalized);
-    }
-
-    return new Promise((resolve, reject) => {
-      storage.set({ [SESSION_KEY]: normalized }, () => {
-        const lastError = runtime?.chrome?.runtime?.lastError || global.chrome?.runtime?.lastError;
-        if (lastError) {
-          reject(new Error(lastError.message || "Nie udało się zapisać sesji."));
-          return;
-        }
-
-        resolve(normalized);
-      });
-    });
-  }
-
-  function clearSession(runtime) {
-    return writeSession({ ...DEFAULT_SESSION }, runtime || global);
-  }
-
-  function countWords(text) {
-    const value = normalizeString(text);
-    return value ? value.split(/\s+/).length : 0;
+  function countWords(markdown) {
+    const plain = String(markdown ?? "")
+      .replace(/\]\([^)\s]*(?:\s+"[^"]*")?\)/g, "]")
+      .replace(/\b(?:https?|mailto|tel):\S+/g, "");
+    return plain.match(/[\p{L}\p{N}]+(?:['’.-][\p{L}\p{N}]+)*/gu)?.length ?? 0;
   }
 
   function getDomain(url) {
-    if (!url) {
-      return "";
-    }
-
     try {
       return new URL(url).hostname.replace(/^www\./, "");
-    } catch (error) {
+    } catch {
       return "";
     }
   }
 
-  function slugify(value) {
-    return String(value || "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 48);
+  function scanLines(markdown, visit) {
+    let fence = null;
+    return String(markdown ?? "")
+      .split("\n")
+      .map((line) => {
+        const marker = line.match(FENCE)?.[1];
+        if (fence) {
+          if (marker && marker[0] === fence[0] && marker.length >= fence.length && !line.trim().slice(marker.length).trim()) fence = null;
+          return line;
+        }
+        if (marker) {
+          fence = marker;
+          return line;
+        }
+        return visit(line);
+      });
   }
 
-  function createEntryId(result) {
-    const seed = slugify(result?.title || result?.section || result?.domain || "fragment") || "fragment";
-    const stamp = Date.now().toString(36);
-    const rand = Math.random().toString(36).slice(2, 7);
-    return `${seed}-${stamp}-${rand}`;
-  }
-
-  function extractPrimaryHeading(markdown) {
-    const match = String(markdown || "").match(/^#{1,6}\s+(.+)$/m);
-    return match ? match[1].trim() : "";
-  }
-
-  function normalizeComparableText(value) {
-    return String(value || "")
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  function buildEntryFromResult(result, options) {
-    const capturedAt = new Date().toISOString();
-    const section = extractPrimaryHeading(result?.markdown);
-    const title = normalizeString(result?.title) || normalizeString(result?.domain) || "Fragment";
-    const normalizedTitle = normalizeComparableText(title);
-    const normalizedSection = normalizeComparableText(section);
-
-    return normalizeEntry(
-      {
-        id: createEntryId({ ...result, section }),
-        title,
-        section: normalizedSection && normalizedSection !== normalizedTitle ? section : "",
-        url: normalizeString(result?.url),
-        domain: getDomain(result?.url),
-        mode: "smart",
-        trigger: normalizeString(options?.trigger),
-        capturedAt,
-        wordCount: countWords(result?.markdown),
-        markdown: normalizeString(result?.markdown)
-      },
-      0
-    );
-  }
-
-  function getSessionStats(session) {
-    const normalized = normalizeSession(session);
-    const fragments = normalized.entries.length;
-    const words = normalized.entries.reduce((sum, entry) => sum + entry.wordCount, 0);
-
-    return {
-      fragments,
-      words,
-      updatedAt: normalized.updatedAt
-    };
-  }
-
-  function formatEntryMarkdown(entry) {
-    const lines = [`## ${entry.title || "Fragment"}`];
-
-    if (entry.section) {
-      lines.push(`Section: ${entry.section}`);
-    }
-
-    if (entry.url) {
-      lines.push(`Source: ${entry.url}`);
-    }
-
-    if (entry.domain) {
-      lines.push(`Domain: ${entry.domain}`);
-    }
-
-    lines.push(`Captured: ${entry.capturedAt || new Date().toISOString()}`);
-    lines.push(`Words: ${entry.wordCount}`);
-    lines.push("");
-    lines.push(entry.markdown.trim());
-
-    return lines.join("\n").trim();
-  }
-
-  function exportSessionMarkdown(session) {
-    const normalized = normalizeSession(session);
-    if (!normalized.entries.length) {
-      return "";
-    }
-
-    return normalized.entries.map(formatEntryMarkdown).join("\n\n---\n\n").trim();
-  }
-
-  async function appendResult(result, options, runtime) {
-    const entry = buildEntryFromResult(result, options || {});
-    const current = await readSession(runtime || global);
-    const next = normalizeSession({
-      entries: [...current.entries, entry],
-      updatedAt: entry.capturedAt
+  function primaryHeading(markdown) {
+    let heading = "";
+    scanLines(markdown, (line) => {
+      if (!heading && HEADING.test(line)) heading = line.replace(HEADING, "").replace(/[ \t]#+[ \t]*$/, "").trim();
+      return line;
     });
+    return heading;
+  }
 
-    const saved = await writeSession(next, runtime || global);
-    return {
-      entry,
-      session: saved,
-      markdown: exportSessionMarkdown(saved),
-      stats: getSessionStats(saved)
-    };
+  function demoteHeadings(markdown, topLevel) {
+    let minLevel = 7;
+    scanLines(markdown, (line) => {
+      const level = line.match(HEADING)?.[1].length;
+      if (level) minLevel = Math.min(minLevel, level);
+      return line;
+    });
+    const shift = Math.max(0, topLevel - minLevel);
+    if (!shift || minLevel === 7) return markdown;
+    return scanLines(markdown, (line) => line.replace(HEADING, (_, hashes) => "#".repeat(Math.min(6, hashes.length + shift)))).join("\n");
+  }
+
+  function createEntry(result, mode) {
+    const markdown = text(result?.markdown);
+    const title = text(result?.title);
+    const section = primaryHeading(markdown);
+    return normalizeEntry({
+      title,
+      section: section.toLowerCase() === title.toLowerCase() ? "" : section,
+      url: result?.url,
+      mode,
+      capturedAt: new Date().toISOString(),
+      wordCount: countWords(markdown),
+      markdown
+    });
+  }
+
+  function isDuplicate(entries, entry) {
+    const last = entries.at(-1);
+    return Boolean(last) && last.url === entry.url && last.markdown === entry.markdown;
+  }
+
+  function groupBySource(entries) {
+    const groups = new Map();
+    for (const entry of entries) {
+      const key = entry.url || entry.title || entry.id;
+      if (!groups.has(key)) groups.set(key, { url: entry.url, title: entry.title || entry.domain || entry.url, fragments: [] });
+      groups.get(key).fragments.push(entry.markdown);
+    }
+    return [...groups.values()];
+  }
+
+  function toMarkdown(entries) {
+    return groupBySource(entries)
+      .map(({ url, title, fragments }) => {
+        const header = [`## ${title || url}`, url && `<${url}>`].filter(Boolean).join("\n\n");
+        return [header, ...fragments.map((fragment) => demoteHeadings(fragment, 3))].join("\n\n");
+      })
+      .join("\n\n---\n\n");
+  }
+
+  const escapeTag = (value) => String(value ?? "").replace(/</g, "&lt;");
+
+  function toAiPrompt(entries, instruction) {
+    const documents = groupBySource(entries).map(({ url, title, fragments }, index) =>
+      [
+        `<document index="${index + 1}">`,
+        url && `<source>${escapeTag(url)}</source>`,
+        title && `<title>${escapeTag(title)}</title>`,
+        "<document_content>",
+        fragments.map((fragment) => demoteHeadings(fragment, 2)).join("\n\n---\n\n").replace(/<\/document_content>/gi, "<\\/document_content>"),
+        "</document_content>",
+        "</document>"
+      ]
+        .filter(Boolean)
+        .join("\n")
+    );
+    return [["<documents>", ...documents, "</documents>"].join("\n"), text(instruction)].filter(Boolean).join("\n\n");
+  }
+
+  const estimateTokens = (value) => Math.ceil(String(value ?? "").length / CHARS_PER_TOKEN);
+
+  async function read() {
+    try {
+      const stored = await chrome.storage.local.get(SESSION_KEY);
+      return normalize(stored[SESSION_KEY]);
+    } catch {
+      return normalize();
+    }
+  }
+
+  async function write(session) {
+    const next = normalize({ ...session, updatedAt: new Date().toISOString() });
+    await chrome.storage.local.set({ [SESSION_KEY]: next });
+    return next;
+  }
+
+  async function isNearQuota() {
+    const bytes = await chrome.storage.local.getBytesInUse?.(SESSION_KEY).catch(() => 0);
+    return (bytes ?? 0) >= QUOTA_WARNING_BYTES;
   }
 
   WMExt.session = {
     SESSION_KEY,
-    DEFAULT_SESSION,
-    appendResult,
-    buildEntryFromResult,
-    clearSession,
-    exportSessionMarkdown,
-    getSessionStats,
-    normalizeSession,
-    readSession,
-    writeSession
+    normalize,
+    countWords,
+    getDomain,
+    primaryHeading,
+    demoteHeadings,
+    createEntry,
+    isDuplicate,
+    toMarkdown,
+    toAiPrompt,
+    estimateTokens,
+    read,
+    write,
+    isNearQuota
   };
-})(window);
+})();

@@ -1,0 +1,316 @@
+{
+  "extName": {
+    "message": "Wtyczka Markdown"
+  },
+  "extDescription": {
+    "message": "Zamienia zaznaczony fragment strony na czysty Markdown i kopiuje go do schowka. Sesje dla AI i tabele do Arkuszy Google."
+  },
+  "commandConvert": {
+    "message": "Konwertuj zaznaczenie na Markdown"
+  },
+  "menuConvert": {
+    "message": "Konwertuj zaznaczenie na Markdown"
+  },
+  "buttonTitle": {
+    "message": "Konwertuj zaznaczenie na Markdown i skopiuj"
+  },
+  "actionTitleWithCount": {
+    "message": "Wtyczka Markdown – fragmenty w sesji: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "convertButton": {
+    "message": "Konwertuj zaznaczenie"
+  },
+  "modeLabel": {
+    "message": "Tryb czyszczenia"
+  },
+  "modeSmart": {
+    "message": "Smart"
+  },
+  "modeStrict": {
+    "message": "Strict"
+  },
+  "modeSmartHint": {
+    "message": "Smart usuwa reklamy, przyciski udostępniania i ukryte elementy, a zostawia treść."
+  },
+  "modeStrictHint": {
+    "message": "Strict dodatkowo wycina nawigację, stopki i boksy poboczne."
+  },
+  "collectLabel": {
+    "message": "Zbieraj do sesji"
+  },
+  "tabsLabel": {
+    "message": "Widoki"
+  },
+  "tabResult": {
+    "message": "Wynik"
+  },
+  "tabSession": {
+    "message": "Sesja"
+  },
+  "tabSettings": {
+    "message": "Ustawienia"
+  },
+  "onboardingTitle": {
+    "message": "Jak to działa"
+  },
+  "onboardingStep1": {
+    "message": "Zaznacz fragment tekstu na dowolnej stronie."
+  },
+  "onboardingStep2": {
+    "message": "Kliknij przycisk MD przy zaznaczeniu, użyj skrótu klawiszowego albo przycisku powyżej."
+  },
+  "onboardingStep3": {
+    "message": "Markdown trafia do schowka. Wklej go, gdzie chcesz."
+  },
+  "outputLabel": {
+    "message": "Wynik w Markdown (możesz go edytować)"
+  },
+  "copy": {
+    "message": "Kopiuj"
+  },
+  "copied": {
+    "message": "Skopiowano do schowka."
+  },
+  "addToSession": {
+    "message": "Do sesji"
+  },
+  "addedToSession": {
+    "message": "Dodano do sesji."
+  },
+  "alreadyInSession": {
+    "message": "Ten fragment jest już w sesji."
+  },
+  "copyTable": {
+    "message": "Tabela → Arkusze"
+  },
+  "copyTables": {
+    "message": "Tabele ($ARG1$) → Arkusze",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "copyTableHint": {
+    "message": "Kopiuje tabelę jako TSV. Wklej ją do Arkuszy Google lub Excela."
+  },
+  "tableCopied": {
+    "message": "Skopiowano tabelę. Wklej ją do Arkuszy Google lub Excela."
+  },
+  "sessionEmptyTitle": {
+    "message": "Sesja jest pusta"
+  },
+  "sessionEmptyText": {
+    "message": "Włącz „Zbieraj do sesji” albo kliknij „Do sesji” przy wyniku. Zebrane fragmenty skopiujesz naraz, np. do Claude."
+  },
+  "openEntry": {
+    "message": "Pokaż w zakładce Wynik"
+  },
+  "remove": {
+    "message": "Usuń"
+  },
+  "removeEntry": {
+    "message": "Usuń fragment: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "entryRemoved": {
+    "message": "Usunięto fragment."
+  },
+  "sessionCleared": {
+    "message": "Wyczyszczono sesję."
+  },
+  "undo": {
+    "message": "Cofnij"
+  },
+  "aiInstructionLabel": {
+    "message": "Instrukcja dla AI (opcjonalnie)"
+  },
+  "aiInstructionPlaceholder": {
+    "message": "Np. Na podstawie dokumentów przygotuj konspekt artykułu."
+  },
+  "aiPresetLabel": {
+    "message": "Gotowe instrukcje"
+  },
+  "aiPresetNone": {
+    "message": "Wstaw gotową instrukcję…"
+  },
+  "aiPresetSummaryName": {
+    "message": "Streszczenie"
+  },
+  "aiPresetSummary": {
+    "message": "Streść powyższe dokumenty. Wypisz najważniejsze wnioski w punktach i przy każdym podaj numer dokumentu źródłowego."
+  },
+  "aiPresetFactsName": {
+    "message": "Fakty i liczby"
+  },
+  "aiPresetFacts": {
+    "message": "Wypisz z powyższych dokumentów konkretne fakty, dane liczbowe i daty. Przy każdym podaj dosłowny cytat i numer dokumentu. Nie dodawaj informacji spoza dokumentów."
+  },
+  "aiPresetCompareName": {
+    "message": "Porównanie źródeł"
+  },
+  "aiPresetCompare": {
+    "message": "Porównaj powyższe dokumenty: w czym się zgadzają, czym się różnią i czego brakuje w każdym z nich. Odpowiedz tabelą Markdown, a pod nią dodaj krótkie podsumowanie."
+  },
+  "copyForAi": {
+    "message": "Kopiuj dla AI"
+  },
+  "copyForAiHint": {
+    "message": "Fragmenty pogrupowane według źródeł w tagach <document>, czyli w formacie zalecanym dla Claude. Instrukcja trafia na koniec."
+  },
+  "copiedForAi": {
+    "message": "Skopiowano sesję dla AI. Wklej ją do Claude lub innego czatu."
+  },
+  "copyMarkdown": {
+    "message": "Kopiuj Markdown"
+  },
+  "downloadMd": {
+    "message": "Pobierz .md"
+  },
+  "clearSession": {
+    "message": "Wyczyść"
+  },
+  "fragments": {
+    "message": "fragmenty: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "words": {
+    "message": "słowa: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "tokens": {
+    "message": "tokeny: ≈$ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "showButtonLabel": {
+    "message": "Pokazuj przycisk MD przy zaznaczeniu"
+  },
+  "excludeSiteLabel": {
+    "message": "Ukryj przycisk na $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "excludedTitle": {
+    "message": "Wyłączone domeny"
+  },
+  "excludedHint": {
+    "message": "Na tych stronach i ich subdomenach przycisk MD się nie pojawi. Skrót i menu kontekstowe działają dalej."
+  },
+  "excludedEmpty": {
+    "message": "Brak. Przycisk działa wszędzie."
+  },
+  "excludePlaceholder": {
+    "message": "np. docs.google.com"
+  },
+  "add": {
+    "message": "Dodaj"
+  },
+  "removeDomain": {
+    "message": "Usuń domenę $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDomain": {
+    "message": "To nie wygląda na poprawną domenę."
+  },
+  "shortcutTitle": {
+    "message": "Skrót klawiszowy"
+  },
+  "shortcutHint": {
+    "message": "Skrót konwersji. Zmienisz go w zakładce Ustawienia."
+  },
+  "shortcutMissing": {
+    "message": "Nie ustawiono (np. konflikt z inną wtyczką)"
+  },
+  "change": {
+    "message": "Zmień"
+  },
+  "converting": {
+    "message": "Konwertuję…"
+  },
+  "statusReady": {
+    "message": "Zaznacz tekst na stronie i kliknij „Konwertuj zaznaczenie”."
+  },
+  "statusLastResult": {
+    "message": "Poniżej ostatni wynik. Zaznacz nowy fragment, aby go zastąpić."
+  },
+  "toastCopied": {
+    "message": "Skopiowano Markdown ($ARG1$).",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "toastCopiedAndSaved": {
+    "message": "Skopiowano i dodano do sesji ($ARG1$, fragmenty w sesji: $ARG2$).",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      },
+      "arg2": {
+        "content": "$2"
+      }
+    }
+  },
+  "toastDuplicate": {
+    "message": "Skopiowano. Ten fragment jest już w sesji."
+  },
+  "toastNearQuota": {
+    "message": "Sesja zbliża się do limitu pamięci: skopiuj ją i wyczyść."
+  },
+  "toastSaveFailed": {
+    "message": "Skopiowano, ale nie udało się zapisać w sesji. Skopiuj i wyczyść sesję."
+  },
+  "toastCopyFailed": {
+    "message": "Nie udało się skopiować. Otwórz okno wtyczki: wynik czeka w zakładce Wynik."
+  },
+  "toastCopyFailedPopup": {
+    "message": "Nie udało się skopiować do schowka."
+  },
+  "errorNoSelection": {
+    "message": "Najpierw zaznacz tekst na stronie."
+  },
+  "errorEmpty": {
+    "message": "Zaznaczenie nie zawiera treści do konwersji."
+  },
+  "errorRestricted": {
+    "message": "Chrome nie pozwala rozszerzeniom czytać tej strony (np. chrome://, Chrome Web Store, podgląd PDF)."
+  },
+  "errorFileAccess": {
+    "message": "Aby działać na plikach lokalnych, włącz „Zezwalaj na dostęp do adresów URL plików” w szczegółach rozszerzenia."
+  },
+  "errorGeneric": {
+    "message": "Coś poszło nie tak. Odśwież stronę i spróbuj ponownie."
+  },
+  "errorSettings": {
+    "message": "Nie udało się zapisać ustawień."
+  }
+}

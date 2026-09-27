@@ -1,476 +1,299 @@
-(function () {
-  const STORAGE_KEY = "wm-settings";
-  const DEFAULT_SETTINGS = {
-    collectMode: false
-  };
+const { settings, session } = globalThis.WMExt;
+const t = (key, substitutions) => chrome.i18n.getMessage(key, substitutions);
+const $ = (id) => document.getElementById(id);
+const LAST_RESULT_KEY = "wm-last-result";
+const TAB_KEY = "wm-popup-tab";
+const TABS = ["result", "session", "settings"];
+const UNDO_MS = 8000;
+const number = new Intl.NumberFormat(chrome.i18n.getUILanguage());
 
-  const elements = {
-    convertBtn: document.getElementById("convertBtn"),
-    captureBtn: document.getElementById("captureBtn"),
-    copyBtn: document.getElementById("copyBtn"),
-    copySessionBtn: document.getElementById("copySessionBtn"),
-    clearSessionBtn: document.getElementById("clearSessionBtn"),
-    collectMode: document.getElementById("collectMode"),
-    shortcutBtn: document.getElementById("shortcutBtn"),
-    shortcutLabel: document.getElementById("shortcutLabel"),
-    resultViewBtn: document.getElementById("resultViewBtn"),
-    sessionViewBtn: document.getElementById("sessionViewBtn"),
-    status: document.getElementById("status"),
-    meta: document.getElementById("meta"),
-    output: document.getElementById("markdownOutput")
-  };
+const state = { prefs: settings.normalize(), entries: [], result: null, hostname: "", undo: null };
 
-  const state = {
-    collectMode: false,
-    currentView: "result",
-    resultMarkdown: "",
-    resultMetaLabel: "",
-    sessionMarkdown: "",
-    sessionStats: {
-      fragments: 0,
-      words: 0
-    },
-    lastResult: null,
-    lastResultInSession: false,
-    busy: false
-  };
-
-  function normalizeSettings(settings) {
-    const value = settings && typeof settings === "object" ? settings : {};
-    return {
-      collectMode:
-        typeof value.collectMode === "boolean" ? value.collectMode : DEFAULT_SETTINGS.collectMode
-    };
-  }
-
-  function loadSettings() {
-    return new Promise((resolve) => {
-      chrome.storage.sync.get(STORAGE_KEY, (result) => {
-        if (chrome.runtime.lastError) {
-          resolve({ ...DEFAULT_SETTINGS });
-          return;
-        }
-
-        resolve(normalizeSettings(result[STORAGE_KEY]));
-      });
-    });
-  }
-
-  function saveSettings() {
-    const payload = normalizeSettings({
-      collectMode: state.collectMode
-    });
-
-    return new Promise((resolve, reject) => {
-      chrome.storage.sync.set({ [STORAGE_KEY]: payload }, () => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message || "Nie udało się zapisać ustawień."));
-          return;
-        }
-
-        resolve(payload);
-      });
-    });
-  }
-
-  function setStatus(message, kind) {
-    elements.status.textContent = message;
-    elements.status.classList.remove("is-warning", "is-error", "is-success");
-    if (kind) {
-      elements.status.classList.add(`is-${kind}`);
+function localize() {
+  document.documentElement.lang = chrome.i18n.getUILanguage();
+  for (const element of document.querySelectorAll("[data-i18n]")) element.textContent = t(element.dataset.i18n);
+  for (const attribute of ["placeholder", "title", "aria-label"]) {
+    for (const element of document.querySelectorAll(`[data-i18n-${attribute}]`)) {
+      element.setAttribute(attribute, t(element.getAttribute(`data-i18n-${attribute}`)));
     }
   }
+}
 
-  function getSessionStats() {
-    return state.sessionStats || { fragments: 0, words: 0 };
+function setStatus(message, tone = "info") {
+  $("status").textContent = message ?? "";
+  $("status").dataset.tone = tone;
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return (await chrome.runtime.sendMessage({ type: "WM_COPY", text }).catch(() => null))?.ok === true;
   }
+}
 
-  function getActiveViewMarkdown() {
-    return state.currentView === "session" ? state.sessionMarkdown : state.resultMarkdown;
+async function copyWithStatus(text, successMessage) {
+  const copied = await copyText(text);
+  setStatus(copied ? successMessage : t("toastCopyFailedPopup"), copied ? "success" : "error");
+}
+
+const send = (message) => chrome.runtime.sendMessage(message).catch(() => ({ ok: false, message: t("errorGeneric"), tone: "error" }));
+
+function selectTab(name, focus = false) {
+  for (const tab of document.querySelectorAll('[role="tab"]')) {
+    const selected = tab.id === `tab-${name}`;
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    $(tab.getAttribute("aria-controls")).hidden = !selected;
+    if (selected && focus) tab.focus();
   }
+  localStorage.setItem(TAB_KEY, name);
+}
 
-  function getResultMeta() {
-    if (!state.resultMarkdown.trim()) {
-      return "Brak wyniku";
-    }
+function onTabKeydown(event) {
+  const tabs = [...document.querySelectorAll('[role="tab"]')];
+  const index = tabs.indexOf(event.currentTarget);
+  const next = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: tabs.length - 1 }[event.key];
+  if (next === undefined) return;
+  event.preventDefault();
+  selectTab(tabs.at(next % tabs.length).id.slice(4), true);
+}
 
-    const words = state.lastResult?.wordCount || state.resultMarkdown.trim().split(/\s+/).length;
-    const label = state.resultMetaLabel || "Zaznaczenie";
-    return `${label} • ${words} słów`;
+function renderPrefs() {
+  const { prefs, hostname } = state;
+  for (const radio of document.querySelectorAll('input[name="mode"]')) radio.checked = radio.value === prefs.mode;
+  $("modeHint").textContent = t(prefs.mode === "strict" ? "modeStrictHint" : "modeSmartHint");
+  $("collectMode").checked = prefs.collectMode;
+  $("showButton").checked = prefs.showButton;
+  if (document.activeElement !== $("aiInstruction")) $("aiInstruction").value = prefs.aiInstruction;
+  $("siteToggle").hidden = !hostname;
+  $("excludeSite").checked = settings.isExcluded(hostname, prefs.excludedDomains);
+  $("excludeSite").disabled = !prefs.showButton;
+  $("excludeSiteLabel").textContent = t("excludeSiteLabel", [hostname.replace(/^www\./, "")]);
+  $("excludedList").replaceChildren(
+    ...(prefs.excludedDomains.length
+      ? prefs.excludedDomains.map((domain) => chip(domain))
+      : [Object.assign(document.createElement("li"), { className: "hint", textContent: t("excludedEmpty") })])
+  );
+}
+
+function chip(domain) {
+  const item = document.createElement("li");
+  const remove = Object.assign(document.createElement("button"), { type: "button", textContent: "×", title: t("remove") });
+  remove.setAttribute("aria-label", t("removeDomain", [domain]));
+  remove.addEventListener("click", () => savePrefs({ excludedDomains: state.prefs.excludedDomains.filter((value) => value !== domain) }));
+  item.append(domain, remove);
+  return item;
+}
+
+async function savePrefs(patch) {
+  try {
+    state.prefs = await settings.update(patch);
+  } catch {
+    setStatus(t("errorSettings"), "error");
   }
+  renderPrefs();
+}
 
-  function getSessionMeta() {
-    const stats = getSessionStats();
-    if (!state.sessionMarkdown.trim() || !stats.fragments) {
-      return "Sesja jest pusta";
-    }
+function renderResult() {
+  const { result } = state;
+  const hasResult = Boolean(result?.markdown);
+  $("onboarding").hidden = hasResult;
+  $("output").hidden = !hasResult;
+  $("resultTools").hidden = !hasResult;
+  if (!hasResult) return;
+  $("output").value = result.markdown;
+  const tables = result.tables ?? [];
+  $("copyTable").hidden = !tables.length;
+  $("copyTable").textContent = tables.length > 1 ? t("copyTables", [String(tables.length)]) : t("copyTable");
+  $("copyTable").title = t("copyTableHint");
+  updateResultMeta();
+}
 
-    return `${stats.fragments} fragmentów • ${stats.words} słów`;
-  }
+function updateResultMeta() {
+  const words = session.countWords($("output").value);
+  const source = session.getDomain(state.result?.url);
+  $("resultMeta").textContent = [t("words", [number.format(words)]), source].filter(Boolean).join(" · ");
+}
 
-  function syncPreview() {
-    const value = getActiveViewMarkdown();
-    elements.output.value = value;
-    elements.meta.textContent = state.currentView === "session" ? getSessionMeta() : getResultMeta();
-    elements.resultViewBtn.classList.toggle("active", state.currentView === "result");
-    elements.sessionViewBtn.classList.toggle("active", state.currentView === "session");
+function renderSession() {
+  const { entries } = state;
+  $("sessionCount").hidden = !entries.length;
+  $("sessionCount").textContent = number.format(entries.length);
+  $("sessionEmpty").hidden = Boolean(entries.length);
+  $("sessionContent").hidden = !entries.length;
+  $("entries").replaceChildren(...entries.map(entryItem));
+  renderSessionMeta();
+}
 
-    const hasViewMarkdown = Boolean(value.trim());
-    const hasSessionMarkdown = Boolean(state.sessionMarkdown.trim());
-    elements.copyBtn.disabled = state.busy || !hasViewMarkdown;
-    elements.copyBtn.textContent = "Kopiuj widok";
-    elements.copySessionBtn.disabled = state.busy || !hasSessionMarkdown;
-    elements.clearSessionBtn.disabled = state.busy || !hasSessionMarkdown;
-    elements.captureBtn.disabled = state.busy || !state.resultMarkdown.trim() || state.lastResultInSession;
-    elements.captureBtn.textContent = state.lastResultInSession ? "Wynik już jest w sesji" : "Dodaj wynik do sesji";
-  }
+function renderSessionMeta() {
+  const { entries } = state;
+  const words = entries.reduce((sum, entry) => sum + entry.wordCount, 0);
+  const tokens = session.estimateTokens(session.toAiPrompt(entries, $("aiInstruction").value));
+  $("sessionMeta").textContent = [
+    t("fragments", [number.format(entries.length)]),
+    t("words", [number.format(words)]),
+    t("tokens", [number.format(tokens)])
+  ].join(" · ");
+}
 
-  function setBusy(isBusy) {
-    state.busy = isBusy;
-    elements.convertBtn.disabled = isBusy;
-    elements.captureBtn.disabled = isBusy || !state.resultMarkdown.trim() || state.lastResultInSession;
-    elements.copyBtn.disabled = isBusy || !getActiveViewMarkdown().trim();
-    elements.copySessionBtn.disabled = isBusy || !state.sessionMarkdown.trim();
-    elements.clearSessionBtn.disabled = isBusy || !state.sessionMarkdown.trim();
-    elements.collectMode.disabled = isBusy;
-    elements.shortcutBtn.disabled = isBusy;
-    elements.resultViewBtn.disabled = isBusy;
-    elements.sessionViewBtn.disabled = isBusy;
-    elements.convertBtn.textContent = isBusy ? "Konwertuję..." : "Konwertuj zaznaczenie";
-  }
-
-  function syncToggleUI() {
-    elements.collectMode.checked = state.collectMode;
-  }
-
-  function normalizeShortcut(shortcut) {
-    return shortcut && typeof shortcut === "string" ? shortcut.replace(/\s*\+\s*/g, " + ") : "";
-  }
-
-  function loadShortcutLabel() {
-    if (!chrome.commands?.getAll) {
-      elements.shortcutLabel.textContent = "Skrót Chrome";
-      return;
-    }
-
-    chrome.commands.getAll((commands) => {
-      if (chrome.runtime.lastError) {
-        elements.shortcutLabel.textContent = "Skrót Chrome";
-        return;
-      }
-
-      const command = (commands || []).find((item) => item.name === "convert-selection");
-      elements.shortcutLabel.textContent = normalizeShortcut(command?.shortcut) || "Nie ustawiono skrótu";
-    });
-  }
-
-  function openShortcutSettings() {
-    const shortcutsUrl = "chrome://extensions/shortcuts";
-
-    try {
-      chrome.tabs.create({ url: shortcutsUrl }, () => {
-        if (chrome.runtime.lastError) {
-          window.open(shortcutsUrl, "_blank", "noopener");
-        }
-      });
-      setStatus("Otwieram ustawienia skrótów Chrome.", "success");
-    } catch (error) {
-      window.open(shortcutsUrl, "_blank", "noopener");
-      setStatus("Otwieram ustawienia skrótów Chrome.", "success");
-    }
-  }
-
-  function setResult(result) {
-    state.lastResult = result || null;
-    state.lastResultInSession = Boolean(result?.appendedToSession);
-    state.resultMarkdown = result?.markdown || "";
-    state.resultMetaLabel = result?.title || "Zaznaczenie";
-    syncPreview();
-  }
-
-  async function loadSession() {
-    const session = await window.WMExt.session.readSession(window);
-    state.sessionMarkdown = window.WMExt.session.exportSessionMarkdown(session);
-    state.sessionStats = window.WMExt.session.getSessionStats(session);
-    syncPreview();
-  }
-
-  function withActiveTab() {
-    return new Promise((resolve, reject) => {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-
-        const tab = tabs && tabs[0];
-        if (!tab || typeof tab.id !== "number") {
-          reject(new Error("Nie udało się znaleźć aktywnej karty."));
-          return;
-        }
-
-        resolve(tab);
-      });
-    });
-  }
-
-  function sendMessageToTab(tabId, message) {
-    return new Promise((resolve, reject) => {
-      chrome.tabs.sendMessage(tabId, message, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(getUserFriendlyRuntimeError(chrome.runtime.lastError.message)));
-          return;
-        }
-
-        resolve(response);
-      });
-    });
-  }
-
-  function getUserFriendlyRuntimeError(message) {
-    const value = String(message || "");
-    if (
-      value.includes("Could not establish connection") ||
-      value.includes("Receiving end does not exist") ||
-      value.includes("Cannot access")
-    ) {
-      return "Nie mogę uruchomić konwersji na tej karcie. Chrome blokuje rozszerzenia na stronach systemowych, Chrome Web Store i części specjalnych widoków.";
-    }
-
-    return value || "Nie udało się połączyć z bieżącą kartą.";
-  }
-
-  async function copyToClipboard(text) {
-    if (!text || !text.trim()) {
-      return false;
-    }
-
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch (error) {
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.setAttribute("readonly", "true");
-      textarea.style.position = "fixed";
-      textarea.style.top = "0";
-      textarea.style.left = "-9999px";
-      textarea.style.width = "1px";
-      textarea.style.height = "1px";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      textarea.setSelectionRange(0, textarea.value.length);
-      const copied = document.execCommand("copy");
-      textarea.remove();
-      return copied;
-    }
-  }
-
-  function buildConvertOptions() {
-    return {
-      mode: "smart",
-      autoCopy: true,
-      collectMode: state.collectMode,
-      trigger: "popup"
-    };
-  }
-
-  async function refreshSessionFromResult(result) {
-    if (result?.sessionMarkdown) {
-      state.sessionMarkdown = result.sessionMarkdown;
-      state.sessionStats = result.sessionStats || state.sessionStats;
-      syncPreview();
-      return;
-    }
-
-    await loadSession();
-  }
-
-  async function handleConvert() {
-    if (state.busy) {
-      return;
-    }
-
-    setBusy(true);
-    setStatus("Pobieram zaznaczenie z bieżącej karty...");
-
-    try {
-      const tab = await withActiveTab();
-      const result = await sendMessageToTab(tab.id, {
-        type: "WM_EXTRACT_SELECTION",
-        options: buildConvertOptions()
-      });
-
-      if (!result?.ok) {
-        throw new Error(result?.error || "Nie udało się odczytać zaznaczenia.");
-      }
-
-      setResult(result);
-      await refreshSessionFromResult(result);
-
-      if (result.copied && result.appendedToSession) {
-        setStatus(
-          `Markdown skopiowany i dopisany do sesji (${result.sessionStats?.fragments || 0} fragmentów).`,
-          "success"
-        );
-      } else if (result.copied) {
-        setStatus("Markdown wygenerowany i skopiowany do schowka.", "success");
-      } else if (result.appendedToSession) {
-        setStatus(
-          `Markdown dopisany do sesji (${result.sessionStats?.fragments || 0} fragmentów), ale kopiowanie się nie powiodło.`,
-          "warning"
-        );
-      } else {
-        setStatus("Markdown wygenerowany, ale kopiowanie do schowka się nie powiodło.", "warning");
-      }
-    } catch (error) {
-      const message = error?.message || "Nieznany błąd konwersji.";
-      setResult(null);
-      setStatus(message, "error");
-    } finally {
-      setBusy(false);
-      syncPreview();
-    }
-  }
-
-  async function handleAddCurrentToSession() {
-    if (!state.resultMarkdown.trim() || !state.lastResult?.ok) {
-      setStatus("Najpierw wygeneruj Markdown dla zaznaczenia.", "warning");
-      return;
-    }
-
-    setBusy(true);
-    setStatus("Dopisuję wynik do sesji...");
-
-    try {
-      const appended = await window.WMExt.session.appendResult(state.lastResult, {
-        mode: "smart",
-        trigger: "popup-manual"
-      });
-
-      state.sessionMarkdown = appended.markdown;
-      state.sessionStats = appended.stats;
-      state.lastResultInSession = true;
-      state.currentView = "session";
-      syncPreview();
-      setStatus(`Wynik dopisany do sesji (${appended.stats.fragments} fragmentów).`, "success");
-    } catch (error) {
-      setStatus(error?.message || "Nie udało się dopisać wyniku do sesji.", "error");
-    } finally {
-      setBusy(false);
-      syncPreview();
-    }
-  }
-
-  async function handleCopyActiveView() {
-    const text = getActiveViewMarkdown();
-    if (!text.trim()) {
-      setStatus(state.currentView === "session" ? "Sesja jest pusta." : "Brak Markdown do skopiowania.", "warning");
-      return;
-    }
-
-    const copied = await copyToClipboard(text);
-    setStatus(
-      copied
-        ? state.currentView === "session"
-          ? "Sesja skopiowana do schowka."
-          : "Markdown skopiowany do schowka."
-        : "Nie udało się skopiować wyniku.",
-      copied ? "success" : "error"
-    );
-  }
-
-  async function handleCopySession() {
-    if (!state.sessionMarkdown.trim()) {
-      setStatus("Sesja jest pusta.", "warning");
-      return;
-    }
-
-    const copied = await copyToClipboard(state.sessionMarkdown);
-    setStatus(copied ? "Sesja skopiowana do schowka." : "Nie udało się skopiować sesji.", copied ? "success" : "error");
-  }
-
-  async function handleClearSession() {
-    if (!state.sessionMarkdown.trim()) {
-      setStatus("Sesja jest już pusta.", "warning");
-      return;
-    }
-
-    setBusy(true);
-    setStatus("Czyszczę sesję...");
-
-    try {
-      await window.WMExt.session.clearSession(window);
-      state.sessionMarkdown = "";
-      state.sessionStats = { fragments: 0, words: 0 };
-      state.lastResultInSession = false;
-      if (state.currentView === "session") {
-        state.currentView = "result";
-      }
-      syncPreview();
-      setStatus("Sesja została wyczyszczona.", "success");
-    } catch (error) {
-      setStatus(error?.message || "Nie udało się wyczyścić sesji.", "error");
-    } finally {
-      setBusy(false);
-      syncPreview();
-    }
-  }
-
-  async function setCollectMode(value) {
-    const previousValue = state.collectMode;
-    state.collectMode = Boolean(value);
-    syncToggleUI();
-    try {
-      await saveSettings();
-      setStatus(
-        state.collectMode ? "Tryb zbierania do sesji włączony." : "Tryb zbierania do sesji wyłączony.",
-        "success"
-      );
-    } catch (error) {
-      state.collectMode = previousValue;
-      syncToggleUI();
-      setStatus(error?.message || "Nie udało się zapisać ustawienia.", "error");
-    }
-  }
-
-  function setView(view) {
-    state.currentView = view === "session" ? "session" : "result";
-    syncPreview();
-  }
-
-  async function init() {
-    const settings = await loadSettings();
-    state.collectMode = settings.collectMode;
-    syncToggleUI();
-    setResult(null);
-    await loadSession();
-
-    elements.convertBtn.addEventListener("click", handleConvert);
-    elements.captureBtn.addEventListener("click", handleAddCurrentToSession);
-    elements.copyBtn.addEventListener("click", handleCopyActiveView);
-    elements.copySessionBtn.addEventListener("click", handleCopySession);
-    elements.clearSessionBtn.addEventListener("click", handleClearSession);
-    elements.shortcutBtn.addEventListener("click", openShortcutSettings);
-    elements.collectMode.addEventListener("change", () => setCollectMode(elements.collectMode.checked));
-    elements.resultViewBtn.addEventListener("click", () => setView("result"));
-    elements.sessionViewBtn.addEventListener("click", () => setView("session"));
-
-    window.addEventListener("keydown", (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "enter") {
-        event.preventDefault();
-        handleConvert();
-      }
-    });
-
-    setStatus("Gotowe. Zaznacz tekst na stronie i kliknij konwersję.", "success");
-    loadShortcutLabel();
-    syncPreview();
-  }
-
-  init().catch((error) => {
-    setStatus(error?.message || "Nie udało się uruchomić popupu.", "error");
+function entryItem(entry) {
+  const item = document.createElement("li");
+  const open = Object.assign(document.createElement("button"), { type: "button", className: "entry", title: [t("openEntry"), entry.url].filter(Boolean).join("\n") });
+  const title = Object.assign(document.createElement("span"), { className: "entry-title", textContent: [entry.title || entry.domain, entry.section].filter(Boolean).join(" › ") });
+  const time = entry.capturedAt ? new Date(entry.capturedAt).toLocaleTimeString(chrome.i18n.getUILanguage(), { hour: "2-digit", minute: "2-digit" }) : "";
+  const meta = Object.assign(document.createElement("span"), {
+    className: "meta",
+    textContent: [entry.domain, t("words", [number.format(entry.wordCount)]), time].filter(Boolean).join(" · ")
   });
-})();
+  open.append(title, meta);
+  open.addEventListener("click", () => {
+    state.result = { markdown: entry.markdown, url: entry.url, tables: [] };
+    renderResult();
+    selectTab("result");
+  });
+  const remove = Object.assign(document.createElement("button"), { type: "button", className: "icon", textContent: "×" });
+  remove.setAttribute("aria-label", t("removeEntry", [title.textContent]));
+  remove.title = t("remove");
+  remove.addEventListener("click", () => mutateWithUndo({ type: "WM_SESSION_REMOVE", id: entry.id }, t("entryRemoved")));
+  item.append(open, remove);
+  return item;
+}
+
+async function mutateWithUndo(message, text) {
+  const previous = state.entries;
+  const response = await send(message);
+  if (!response?.ok) return setStatus(t("errorGeneric"), "error");
+  clearTimeout(state.undo);
+  $("snackbarText").textContent = text;
+  $("snackbar").hidden = false;
+  $("undo").onclick = async () => {
+    await send({ type: "WM_SESSION_RESTORE", entries: previous });
+    $("snackbar").hidden = true;
+  };
+  state.undo = setTimeout(() => ($("snackbar").hidden = true), UNDO_MS);
+}
+
+async function convert() {
+  const button = $("convert");
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  setStatus(t("converting"));
+  const response = await send({ type: "WM_CONVERT", mode: state.prefs.mode });
+  button.disabled = false;
+  button.removeAttribute("aria-busy");
+  setStatus(response?.message, response?.tone);
+  if (!response?.ok) return;
+  state.result = response;
+  renderResult();
+  selectTab("result");
+}
+
+function download() {
+  const text = session.toMarkdown(state.entries);
+  const url = URL.createObjectURL(new Blob([text], { type: "text/markdown;charset=utf-8" }));
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
+  Object.assign(document.createElement("a"), { href: url, download: `markdown-session-${stamp}.md` }).click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+function bindEvents() {
+  $("convert").addEventListener("click", convert);
+  document.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && !$("convert").disabled) convert();
+  });
+  for (const radio of document.querySelectorAll('input[name="mode"]')) {
+    radio.addEventListener("change", () => savePrefs({ mode: radio.value }));
+  }
+  $("collectMode").addEventListener("change", (event) => savePrefs({ collectMode: event.target.checked }));
+  $("showButton").addEventListener("change", (event) => savePrefs({ showButton: event.target.checked }));
+  $("excludeSite").addEventListener("change", (event) => {
+    const domain = settings.normalizeDomain(state.hostname);
+    const others = state.prefs.excludedDomains.filter((value) => !settings.isExcluded(state.hostname, [value]));
+    savePrefs({ excludedDomains: event.target.checked ? [...others, domain] : others });
+  });
+  $("excludeForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const domain = settings.normalizeDomain($("excludeInput").value);
+    if (!domain) return setStatus(t("errorDomain"), "error");
+    $("excludeInput").value = "";
+    savePrefs({ excludedDomains: [...state.prefs.excludedDomains, domain] });
+  });
+  $("editShortcut").addEventListener("click", () => chrome.tabs.create({ url: "chrome://extensions/shortcuts" }));
+
+  for (const tab of document.querySelectorAll('[role="tab"]')) {
+    tab.addEventListener("click", () => selectTab(tab.id.slice(4)));
+    tab.addEventListener("keydown", onTabKeydown);
+  }
+
+  $("output").addEventListener("input", updateResultMeta);
+  $("copyResult").addEventListener("click", () => copyWithStatus($("output").value, t("copied")));
+  $("copyTable").addEventListener("click", () => copyWithStatus(state.result.tables.join("\n\n"), t("tableCopied")));
+  $("addToSession").addEventListener("click", async () => {
+    const response = await send({ type: "WM_SESSION_ADD", result: { ...state.result, markdown: $("output").value } });
+    if (response?.added) setStatus(t("addedToSession"), "success");
+    else if (response?.duplicate) setStatus(t("alreadyInSession"));
+    else setStatus(t("errorGeneric"), "error");
+  });
+
+  $("copyAi").addEventListener("click", () => copyWithStatus(session.toAiPrompt(state.entries, $("aiInstruction").value), t("copiedForAi")));
+  $("copyMarkdown").addEventListener("click", () => copyWithStatus(session.toMarkdown(state.entries), t("copied")));
+  $("download").addEventListener("click", download);
+  $("clearSession").addEventListener("click", () => mutateWithUndo({ type: "WM_SESSION_CLEAR" }, t("sessionCleared")));
+
+  $("preset").addEventListener("change", (event) => {
+    if (!event.target.value) return;
+    $("aiInstruction").value = t(event.target.value);
+    event.target.value = "";
+    savePrefs({ aiInstruction: $("aiInstruction").value });
+    renderSessionMeta();
+  });
+  let instructionTimer = 0;
+  $("aiInstruction").addEventListener("input", () => {
+    renderSessionMeta();
+    clearTimeout(instructionTimer);
+    instructionTimer = setTimeout(() => savePrefs({ aiInstruction: $("aiInstruction").value }), 400);
+  });
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes[session.SESSION_KEY]) {
+      state.entries = session.normalize(changes[session.SESSION_KEY].newValue).entries;
+      renderSession();
+    }
+  });
+}
+
+async function renderShortcut() {
+  const command = (await chrome.commands.getAll()).find((item) => item.name === "convert-selection");
+  const shortcut = command?.shortcut ?? "";
+  $("shortcut").hidden = !shortcut;
+  $("shortcut").textContent = shortcut;
+  $("shortcut").title = t("shortcutHint");
+  $("shortcutValue").textContent = shortcut || t("shortcutMissing");
+}
+
+async function init() {
+  localize();
+  bindEvents();
+  const [prefs, stored, last, [tab]] = await Promise.all([
+    settings.load(),
+    session.read(),
+    chrome.storage.session.get(LAST_RESULT_KEY).catch(() => ({})),
+    chrome.tabs.query({ active: true, lastFocusedWindow: true })
+  ]);
+  state.prefs = prefs;
+  state.entries = stored.entries;
+  state.result = last[LAST_RESULT_KEY] ?? null;
+  state.hostname = /^https?:/.test(tab?.url ?? "") ? new URL(tab.url).hostname : "";
+  renderPrefs();
+  renderResult();
+  renderSession();
+  renderShortcut();
+  const savedTab = localStorage.getItem(TAB_KEY);
+  selectTab(TABS.includes(savedTab) ? savedTab : "result");
+  setStatus(state.result ? t("statusLastResult") : t("statusReady"));
+  $("convert").focus();
+}
+
+init();

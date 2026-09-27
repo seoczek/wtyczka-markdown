@@ -1,597 +1,889 @@
-(function (global) {
-  const WMExt = (global.WMExt = global.WMExt || {});
-  const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
+(() => {
+  const WMExt = (globalThis.WMExt ??= {});
 
-  const BLOCK_TAGS = new Set([
-    "article",
-    "aside",
-    "blockquote",
-    "details",
-    "div",
-    "dl",
-    "figure",
-    "figcaption",
-    "footer",
-    "header",
-    "main",
-    "nav",
-    "ol",
-    "p",
-    "pre",
-    "section",
-    "table",
-    "ul"
+  const ELEMENT_NODE = 1;
+  const TEXT_NODE = 3;
+  const HARD_BREAK = "\uE000";
+  const PARAGRAPH_BREAK = "\uE001";
+  const CODE_SPACE = "\uE002";
+  const BREAKS = /[\uE000\uE001]/g;
+  const PRIVATE_MARKERS = /[\uE000-\uE002]/g;
+  const MAX_DEPTH = 200;
+  const MAX_DATA_URL_LENGTH = 1024;
+  const MAX_SELECTOR_LENGTH = 200;
+  const MAX_COLSPAN = 1000;
+
+  const LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
+  const IMAGE_PROTOCOLS = new Set(["http:", "https:", "data:"]);
+  const LAZY_SOURCE_ATTRIBUTES = ["data-src", "data-lazy-src", "data-original"];
+  const PERMALINK_TEXT = new Set(["#", "¶", "§", "🔗"]);
+  const IGNORED_LANGUAGES = new Set(["none", "nohighlight"]);
+  const GUTTER_CLASSES = new Set([
+    "gutter",
+    "linenos",
+    "lineno",
+    "line-number",
+    "line-numbers-rows",
+    "hljs-ln-numbers",
+    "blob-num"
   ]);
 
-  function escapeMarkdownText(value) {
-    return String(value)
-      .replace(/\u00a0/g, " ")
-      .replace(/\\/g, "\\\\")
-      .replace(/([`*_{}\[\]])/g, "\\$1")
-      .replace(/[ \t\r\n]+/g, " ");
+  const SKIPPED_TAGS = new Set([
+    "area", "audio", "base", "canvas", "datalist", "embed", "head", "iframe", "link", "map", "meta",
+    "noscript", "object", "optgroup", "option", "param", "rp", "script", "source", "style", "svg",
+    "template", "textarea", "title", "track", "video"
+  ]);
+
+  const BLOCK_TAGS = new Set([
+    "address", "article", "aside", "blockquote", "caption", "center", "dd", "details", "dialog", "div",
+    "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6",
+    "header", "hgroup", "hr", "legend", "li", "main", "menu", "nav", "ol", "p", "pre", "search", "section",
+    "summary", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul"
+  ]);
+
+  const INLINE_SPECIAL = /[\\`*_[\]<&~]/g;
+  const ASCII_PUNCTUATION = /[!-/:-@[-`{-~]/;
+  const WORD_CHARACTER = /[\p{L}\p{N}]/u;
+  const ENTITY_REFERENCE = /#?[a-z\d]{1,32};/iy;
+  const TAG_START = /[a-z/!?]/i;
+  const BLOCK_MARKER = /^(?:#{1,6}|[+*-])(?:[ \t]|$)/;
+  const SETEXT_OR_RULE = /^(?:=+|-+|-(?:[ \t]*-){2,})[ \t]*$/;
+  const ORDERED_MARKER = /^(\d{1,9})[.)](?:[ \t]|$)/;
+  const HTML_WHITESPACE = /[ \t\n\r\f\u00a0]+/g;
+  const LANGUAGE_CLASS = /(?:^|\s)(?:lang(?:uage)?-|highlight-(?:source-)?)([\w+#.-]+)/i;
+  const BRUSH_CLASS = /brush:\s*([\w+#.-]+)/i;
+  const LANGUAGE_NAME = /^[\w+#.-]+$/;
+  const CSS_START = /^(?:@[a-z-]+|:root\b|--[\w-]+\s*:|[.#*[:]|[a-z][\w-]*\s*[{,>+~.#:[])/i;
+  const CSS_DECLARATION = /^\s*-{0,2}[a-z][\w-]*\s*:\s*\S/i;
+
+  function createContainer() {
+    const doc = globalThis.document.implementation.createHTMLDocument("");
+    const base = doc.createElement("base");
+    base.href = globalThis.document.baseURI;
+    doc.head.append(base);
+    return doc.body.appendChild(doc.createElement("div"));
   }
 
-  function normalizeUrl(url) {
-    const raw = String(url || "").trim();
-    if (!raw) {
-      return "";
+  function htmlToMarkdown(input) {
+    const root = createContainer();
+    if (typeof input === "string") {
+      root.innerHTML = input;
+    } else {
+      root.append(root.ownerDocument.importNode(input, true));
+    }
+    return convert(root).markdown;
+  }
+
+  function convert(root) {
+    const state = { warnings: new Set(), ...analyze(root) };
+    const blocks = renderBlocks(root, { state, depth: 0 });
+    return { markdown: joinBlocks(blocks).replaceAll(CODE_SPACE, " "), warnings: [...state.warnings] };
+  }
+
+  function analyze(root) {
+    const blockHolders = new Set();
+    const itemHolders = new Set();
+    const stack = [[root, false]];
+    while (stack.length) {
+      const [element, done] = stack.pop();
+      if (!done) {
+        stack.push([element, true]);
+        for (const child of elementsOf(element)) stack.push([child, false]);
+        continue;
+      }
+      const parent = element.parentElement;
+      if (!parent || element === root) continue;
+      if (BLOCK_TAGS.has(element.localName) || blockHolders.has(element)) blockHolders.add(parent);
+      if (element.localName === "li" || itemHolders.has(element)) itemHolders.add(parent);
+    }
+    return { blockHolders, itemHolders };
+  }
+
+  function joinBlocks(blocks) {
+    return blocks.map((block) => block.text).join("\n\n");
+  }
+
+  function renderBlocks(parent, ctx, blocks = []) {
+    return renderNodes(nodesOf(parent), ctx, blocks);
+  }
+
+  function renderNodes(nodes, ctx, blocks = []) {
+    if (ctx.depth > MAX_DEPTH) {
+      pushParagraphs(blocks, [...nodes].map((node) => renderText(textOf(node))).join(" "), ctx);
+      return blocks;
     }
 
-    try {
-      const value = new URL(raw, global.location.href);
-      if (!ALLOWED_LINK_PROTOCOLS.has(value.protocol)) {
-        return "";
-      }
-      return value.toString();
-    } catch (error) {
-      return "";
-    }
-  }
-
-  function trimBlankLines(value) {
-    return String(value || "")
-      .replace(/^\n+/, "")
-      .replace(/\n+$/, "");
-  }
-
-  function collapseInline(value) {
-    return String(value || "")
-      .replace(/[ \t]+\n/g, "\n")
-      .replace(/\n[ \t]+/g, "\n")
-      .replace(/[ \t]{2,}/g, " ")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-  }
-
-  function getFenceMarker(line) {
-    const match = String(line || "")
-      .trim()
-      .match(/^(`{3,}|~{3,})/);
-    return match ? match[1] : "";
-  }
-
-  function isClosingFence(line, openingMarker) {
-    const marker = getFenceMarker(line);
-    return Boolean(marker && openingMarker && marker[0] === openingMarker[0] && marker.length >= openingMarker.length);
-  }
-
-  function collapseBlocks(value) {
-    const lines = String(value || "")
-      .replace(/\r\n?/g, "\n")
-      .split("\n");
-    const output = [];
-    let fenceMarker = "";
-    let blankLines = 0;
-
-    lines.forEach((rawLine) => {
-      if (fenceMarker) {
-        output.push(rawLine);
-        if (isClosingFence(rawLine, fenceMarker)) {
-          fenceMarker = "";
-          blankLines = 0;
-        }
-        return;
-      }
-
-      const line = rawLine.replace(/[ \t]+$/g, "");
-      const openingMarker = getFenceMarker(line);
-      if (openingMarker) {
-        output.push(line);
-        fenceMarker = openingMarker;
-        blankLines = 0;
-        return;
-      }
-
-      if (!line.trim()) {
-        blankLines += 1;
-        if (blankLines <= 2) {
-          output.push("");
-        }
-        return;
-      }
-
-      blankLines = 0;
-      output.push(line);
-    });
-
-    return trimBlankLines(output.join("\n"));
-  }
-
-  function prefixLines(value, prefix) {
-    return trimBlankLines(value)
-      .split("\n")
-      .map((line) => (line ? `${prefix}${line}` : prefix.trimEnd()))
-      .join("\n");
-  }
-
-  function indentBlock(value, indent) {
-    return trimBlankLines(value)
-      .split("\n")
-      .map((line) => (line ? `${indent}${line}` : ""))
-      .join("\n");
-  }
-
-  function blockify(value) {
-    const normalized = collapseBlocks(value);
-    return normalized ? `\n\n${normalized}\n\n` : "";
-  }
-
-  function escapeCode(value) {
-    return String(value || "").replace(/\u00a0/g, " ");
-  }
-
-  function escapeMarkdownLinkText(value) {
-    return String(value || "").replace(/\\/g, "\\\\").replace(/([\[\]])/g, "\\$1");
-  }
-
-  function getLongestBacktickRun(content) {
-    const matches = String(content || "").match(/`+/g) || [];
-    return matches.reduce((max, value) => Math.max(max, value.length), 0);
-  }
-
-  function getFenceForCode(content) {
-    return "`".repeat(Math.max(3, getLongestBacktickRun(content) + 1));
-  }
-
-  function serializeInlineCode(value) {
-    const content = escapeCode(value).trim();
-    if (!content) {
-      return "``";
-    }
-
-    const delimiter = "`".repeat(Math.max(1, getLongestBacktickRun(content) + 1));
-    const padding = delimiter.length > 1 ? " " : "";
-    return `${delimiter}${padding}${content}${padding}${delimiter}`;
-  }
-
-  function serializeChildren(parent, ctx) {
-    let output = "";
-    parent.childNodes.forEach((child) => {
-      output += serializeNode(child, ctx);
-    });
-    return output;
-  }
-
-  function serializeText(value) {
-    const text = String(value || "").replace(/\u00a0/g, " ");
-    if (!text.trim()) {
-      return " ";
-    }
-
-    return escapeMarkdownText(text);
-  }
-
-  function serializeInline(node, ctx, options) {
-    let output = "";
-    node.childNodes.forEach((child) => {
-      if (child.nodeType === global.Node.TEXT_NODE) {
-        output += serializeText(child.nodeValue || "");
-        return;
-      }
-
-      if (child.nodeType !== global.Node.ELEMENT_NODE) {
-        return;
-      }
-
-      const tag = child.tagName.toLowerCase();
-      if (options?.skipNestedLists && isNestedList(child)) {
-        return;
-      }
-
-      if (tag === "br") {
-        output += "  \n";
-        return;
-      }
-
-      output += serializeNode(child, { ...ctx, inline: true });
-    });
-
-    return collapseInline(output);
-  }
-
-  function serializeLink(node, ctx) {
-    const href = normalizeUrl(node.getAttribute("href") || "");
-    const text = collapseInline(serializeInline(node, ctx)).trim();
-    if (!href) {
-      return text;
-    }
-
-    return `[${text || href}](${href.replace(/\(/g, "%28").replace(/\)/g, "%29")})`;
-  }
-
-  function getCodeLanguage(node) {
-    const code = node.querySelector("code");
-    const source = code || node;
-    const className = source.className || "";
-    const languageMatch =
-      className.match(/language-([a-z0-9_-]+)/i) ||
-      className.match(/lang(?:uage)?-([a-z0-9_-]+)/i) ||
-      (source.getAttribute("data-language") || "").match(/^([a-z0-9_-]+)$/i) ||
-      (source.getAttribute("data-lang") || "").match(/^([a-z0-9_-]+)$/i);
-
-    return languageMatch ? languageMatch[1] : "";
-  }
-
-  function serializePre(node) {
-    const code = node.querySelector("code");
-    const language = getCodeLanguage(node);
-    const content = ((code ? code.textContent : node.textContent) || "").replace(/\n+$/g, "");
-    const fence = getFenceForCode(content);
-    return `\n\n${fence}${language}\n${content}\n${fence}\n\n`;
-  }
-
-  function serializeDefinitionList(node, ctx) {
-    const entries = [];
-    let current = null;
-
-    Array.from(node.children).forEach((child) => {
-      const tag = child.tagName.toLowerCase();
-      if (tag === "dt") {
-        current = {
-          term: collapseInline(serializeInline(child, ctx)).trim(),
-          defs: []
-        };
-        entries.push(current);
-        return;
-      }
-
-      if (tag === "dd") {
-        if (!current) {
-          current = { term: "", defs: [] };
-          entries.push(current);
-        }
-
-        const definition = collapseBlocks(serializeChildren(child, ctx)).trim();
-        if (definition) {
-          current.defs.push(definition);
-        }
-      }
-    });
-
-    const blocks = entries
-      .map((entry) => {
-        const lines = [];
-        if (entry.term) {
-          lines.push(entry.term);
-        }
-
-        entry.defs.forEach((definition) => {
-          lines.push(`: ${definition.replace(/\n/g, "\n  ")}`);
-        });
-
-        return lines.join("\n").trim();
-      })
-      .filter(Boolean);
-
-    return blocks.length ? `\n\n${blocks.join("\n\n")}\n\n` : "";
-  }
-
-  function collectTableRows(table) {
-    const rows = [];
-    Array.from(table.children).forEach((child) => {
-      const tag = child.tagName.toLowerCase();
-      if (tag === "tr") {
-        rows.push(child);
-        return;
-      }
-
-      if (tag === "thead" || tag === "tbody" || tag === "tfoot") {
-        Array.from(child.children).forEach((row) => {
-          if (row.tagName && row.tagName.toLowerCase() === "tr") {
-            rows.push(row);
-          }
-        });
-      }
-    });
-
-    return rows;
-  }
-
-  function serializeTable(table, ctx) {
-    const rows = collectTableRows(table);
-    if (!rows.length) {
-      return "";
-    }
-
-    const matrix = rows
-      .map((row) =>
-        Array.from(row.children)
-          .filter((cell) => /^(td|th)$/i.test(cell.tagName))
-          .map((cell) => collapseInline(serializeInline(cell, ctx)).trim().replace(/\|/g, "\\|"))
-      )
-      .filter((row) => row.length);
-
-    if (!matrix.length) {
-      return "";
-    }
-
-    const columns = Math.max(...matrix.map((row) => row.length));
-    const normalized = matrix.map((row) => row.concat(Array(Math.max(columns - row.length, 0)).fill("")));
-    const header = normalized[0];
-    const body = normalized.slice(1);
-    const headerLine = `| ${header.join(" | ")} |`;
-    const divider = `| ${header.map(() => "---").join(" | ")} |`;
-    const bodyLines = body.map((row) => `| ${row.join(" | ")} |`);
-
-    return `\n\n${[headerLine, divider, ...bodyLines].join("\n")}\n\n`;
-  }
-
-  function isNestedList(node) {
-    return node?.nodeType === global.Node.ELEMENT_NODE && /^(ul|ol)$/i.test(node.tagName);
-  }
-
-  function serializeListItem(item, ctx, ordered, index) {
-    const indent = ctx.listIndent || "  ".repeat(ctx.listDepth || 0);
-    const marker = ordered ? `${index + 1}. ` : "- ";
-    const continuationIndent = `${indent}${" ".repeat(marker.length)}`;
-    const nestedCtx = {
-      ...ctx,
-      listDepth: (ctx.listDepth || 0) + 1,
-      listIndent: continuationIndent
+    const inner = { ...ctx, depth: ctx.depth + 1 };
+    let pending = "";
+    const flush = () => {
+      pushParagraphs(blocks, pending, inner);
+      pending = "";
     };
-    let firstLineContent = "";
-    const extraBlocks = [];
-
-    item.childNodes.forEach((child) => {
-      if (child.nodeType === global.Node.TEXT_NODE) {
-        firstLineContent += serializeText(child.nodeValue || "");
-        return;
-      }
-
-      if (child.nodeType !== global.Node.ELEMENT_NODE) {
-        return;
-      }
-
-      const tag = child.tagName.toLowerCase();
-
-      if (tag === "ul" || tag === "ol") {
-        const nestedList = trimBlankLines(serializeList(child, nestedCtx, tag === "ol"));
-        if (nestedList) {
-          extraBlocks.push(nestedList);
+    const visit = (children) => {
+      for (const node of children) {
+        if (node.nodeType === TEXT_NODE) {
+          pending += renderText(node.data);
+        } else if (node.nodeType === ELEMENT_NODE && !SKIPPED_TAGS.has(node.localName)) {
+          if (BLOCK_TAGS.has(node.localName)) {
+            flush();
+            renderBlock(node, inner, blocks);
+          } else if (!inner.state.blockHolders.has(node)) {
+            pending += renderInlineElement(node, inner);
+          } else if (node.localName === "a") {
+            flush();
+            renderLinkedBlocks(node, inner, blocks);
+          } else {
+            visit(nodesOf(node));
+          }
         }
-        return;
       }
+    };
 
-      if (tag === "p" || tag === "div" || tag === "section" || tag === "article") {
-        const paragraph = collapseInline(serializeInline(child, ctx, { skipNestedLists: true })).trim();
-        if (!firstLineContent.trim()) {
-          firstLineContent = paragraph;
-        } else if (paragraph) {
-          extraBlocks.push(indentBlock(paragraph, continuationIndent));
-        }
-
-        Array.from(child.children)
-          .filter((node) => isNestedList(node))
-          .forEach((nestedListNode) => {
-            const nested = trimBlankLines(
-              serializeList(nestedListNode, nestedCtx, nestedListNode.tagName.toLowerCase() === "ol")
-            );
-            if (nested) {
-              extraBlocks.push(nested);
-            }
-          });
-
-        return;
-      }
-
-      if (BLOCK_TAGS.has(tag)) {
-        const block = trimBlankLines(serializeNode(child, nestedCtx));
-        if (block) {
-          extraBlocks.push(indentBlock(block, continuationIndent));
-        }
-        return;
-      }
-
-      firstLineContent += serializeNode(child, ctx);
-    });
-
-    const line = `${indent}${marker}${collapseInline(firstLineContent).trim()}`.trimEnd();
-    const output = [line || `${indent}${marker}`.trimEnd(), ...extraBlocks.filter(Boolean)].join("\n");
-    return output.trimEnd();
+    visit(nodes);
+    flush();
+    return blocks;
   }
 
-  function serializeList(listNode, ctx, ordered) {
-    const items = Array.from(listNode.children).filter((child) => child.tagName.toLowerCase() === "li");
-    if (!items.length) {
-      return "";
-    }
-
-    const lines = items.map((item, index) => serializeListItem(item, ctx, ordered, index));
-    return `\n\n${lines.join("\n")}\n\n`;
-  }
-
-  function serializeDetails(node, ctx) {
-    const summary = node.querySelector(":scope > summary");
-    const summaryText = summary ? collapseInline(serializeInline(summary, ctx)).trim() : "";
-    const body = Array.from(node.childNodes)
-      .filter((child) => child !== summary)
-      .map((child) => serializeNode(child, ctx))
-      .join("");
-    const parts = [];
-
-    if (summaryText) {
-      parts.push(`**${summaryText}**`);
-    }
-
-    const normalizedBody = collapseBlocks(body);
-    if (normalizedBody) {
-      parts.push(normalizedBody);
-    }
-
-    return parts.length ? `\n\n${parts.join("\n\n")}\n\n` : "";
-  }
-
-  function serializeNode(node, ctx) {
-    if (node.nodeType === global.Node.TEXT_NODE) {
-      return serializeText(node.nodeValue || "");
-    }
-
-    if (node.nodeType !== global.Node.ELEMENT_NODE) {
-      return "";
-    }
-
-    if (node.hasAttribute("data-wm-image-alt")) {
-      const alt = (node.getAttribute("data-wm-image-alt") || "").trim();
-      const src = normalizeUrl(node.getAttribute("data-wm-image-src") || "");
-      if (!alt) {
-        return "";
-      }
-
-      if (src) {
-        return `![${escapeMarkdownLinkText(alt)}](${src.replace(/\(/g, "%28").replace(/\)/g, "%29")})`;
-      }
-
-      return `Obraz: ${escapeMarkdownText(alt)}`;
-    }
-
-    if (node.hasAttribute("data-wm-checkbox")) {
-      return node.getAttribute("data-wm-checkbox") === "checked" ? "[x] " : "[ ] ";
-    }
-
-    const tag = node.tagName.toLowerCase();
-
-    switch (tag) {
-      case "br":
-        return "\n";
-      case "hr":
-        return "\n\n---\n\n";
+  function renderBlock(element, ctx, blocks) {
+    switch (element.localName) {
       case "h1":
       case "h2":
       case "h3":
       case "h4":
       case "h5":
-      case "h6": {
-        const level = Number(tag.slice(1));
-        return `\n\n${"#".repeat(level)} ${collapseInline(serializeInline(node, ctx)).trim()}\n\n`;
+      case "h6":
+        return renderHeading(element, ctx, blocks);
+      case "ul":
+      case "ol":
+      case "menu":
+        return renderList(element, ctx, blocks);
+      case "pre":
+        return renderCode(element, ctx, blocks);
+      case "blockquote":
+        return renderQuote(element, ctx, blocks);
+      case "table":
+        return renderTable(element, ctx, blocks);
+      case "dl":
+        return renderDefinitionList(element, ctx, blocks);
+      case "details":
+        return renderDetails(element, ctx, blocks);
+      case "hr":
+        if (!ctx.inTable) blocks.push({ kind: "rule", text: "---" });
+        return blocks;
+      default:
+        return renderBlocks(element, ctx, blocks);
+    }
+  }
+
+  function pushParagraphs(blocks, raw, ctx) {
+    if (!raw) return;
+    for (const text of finishParagraphs(raw, ctx.inTable ? "<br>" : "\\\n", !ctx.inTable)) {
+      if (!text.includes("`") && looksLikeCss(text.replace(/\\([\s\S])/g, "$1"))) {
+        ctx.state.warnings.add("css-noise-removed");
+      } else {
+        blocks.push({ kind: "paragraph", text });
       }
-      case "p":
-      case "section":
-      case "article":
-      case "main":
-      case "aside":
-      case "header":
-      case "footer":
-      case "div":
-      case "figure":
-      case "figcaption":
-        return blockify(serializeChildren(node, ctx));
-      case "blockquote": {
-        const body = collapseBlocks(serializeChildren(node, ctx));
-        return body ? `\n\n${prefixLines(body, "> ")}\n\n` : "";
+    }
+  }
+
+  function finishParagraphs(raw, lineBreak, escapeStarts = true) {
+    const paragraphs = [];
+    const normalized = raw.replace(/ {2,}/g, " ").replace(/\uE000(?: ?\uE000)+/g, PARAGRAPH_BREAK);
+    for (const part of normalized.split(PARAGRAPH_BREAK)) {
+      const lines = part
+        .split(HARD_BREAK)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (lines.length) paragraphs.push((escapeStarts ? lines.map(escapeLineStart) : lines).join(lineBreak));
+    }
+    return paragraphs;
+  }
+
+  function finishLine(raw) {
+    return finishParagraphs(raw.replace(BREAKS, " "), " ", false)[0] ?? "";
+  }
+
+  function renderHeading(heading, ctx, blocks) {
+    const text = finishLine(renderInline(heading, ctx.inTable ? { ...ctx, strong: true } : ctx));
+    if (!text) return blocks;
+    if (ctx.inTable) {
+      blocks.push({ kind: "paragraph", text: `**${text}**` });
+    } else {
+      blocks.push({ kind: "heading", text: `${"#".repeat(Number(heading.localName[1]))} ${escapeClosingHashes(text)}` });
+    }
+    return blocks;
+  }
+
+  function escapeClosingHashes(text) {
+    let start = text.length;
+    while (start > 0 && text[start - 1] === "#") start -= 1;
+    return start < text.length && text[start - 1] === " " ? `${text.slice(0, start)}\\${text.slice(start)}` : text;
+  }
+
+  function renderQuote(quote, ctx, blocks) {
+    if (ctx.inTable) return renderBlocks(quote, ctx, blocks);
+    const body = joinBlocks(renderBlocks(quote, ctx));
+    if (body) {
+      blocks.push({
+        kind: "quote",
+        text: body
+          .split("\n")
+          .map((line) => (line ? `> ${line}` : ">"))
+          .join("\n")
+      });
+    }
+    return blocks;
+  }
+
+  function renderCode(pre, ctx, blocks) {
+    const code = trimTrailingNewlines(textOf(pre).replace(/\r\n?/g, "\n").replace(/\u00a0/g, " "));
+    if (!code.trim()) return blocks;
+
+    if (ctx.inTable) {
+      const lines = code.split("\n").filter((line) => line.trim());
+      blocks.push({ kind: "paragraph", text: lines.map(inlineCode).join("<br>") });
+      return blocks;
+    }
+
+    const fence = "`".repeat(Math.max(3, longestRun(code, "`") + 1));
+    blocks.push({ kind: "code", text: `${fence}${codeLanguage(pre)}\n${code}\n${fence}` });
+    return blocks;
+  }
+
+  function trimTrailingNewlines(text) {
+    let end = text.length;
+    while (end > 0 && text[end - 1] === "\n") end -= 1;
+    return text.slice(0, end);
+  }
+
+  function longestRun(text, char) {
+    let longest = 0;
+    let current = 0;
+    for (const value of text) {
+      current = value === char ? current + 1 : 0;
+      longest = Math.max(longest, current);
+    }
+    return longest;
+  }
+
+  function codeLanguage(pre) {
+    for (const node of [pre.querySelector("code"), pre, pre.parentElement]) {
+      const language = node && languageOf(node);
+      if (language && !IGNORED_LANGUAGES.has(language)) return language;
+    }
+    return "";
+  }
+
+  function languageOf(element) {
+    const declared = element.getAttribute("data-lang") || element.getAttribute("data-language");
+    if (declared && LANGUAGE_NAME.test(declared)) return declared.toLowerCase();
+    const className = element.getAttribute("class") ?? "";
+    const match = LANGUAGE_CLASS.exec(className) ?? BRUSH_CLASS.exec(className);
+    return match ? match[1].toLowerCase() : "";
+  }
+
+  function renderList(list, ctx, blocks) {
+    const items = listItems(list, ctx.state.itemHolders);
+    if (!items.length) return blocks;
+
+    const ordered = list.localName === "ol";
+    const previous = blocks.at(-1);
+    const follows = previous?.kind === "list" && previous.ordered === ordered;
+    const numbers = ordered ? itemNumbers(list, items) : [];
+    const delimiter = ordered ? (follows && previous.delimiter === "." ? ")" : ".") : follows && previous.delimiter === "-" ? "*" : "-";
+    const rendered = items
+      .map((item, index) => renderItem(item, ordered ? `${numbers[index]}${delimiter} ` : `${delimiter} `, ctx))
+      .filter(Boolean);
+    if (!rendered.length) return blocks;
+
+    const loose = rendered.some((text) => text.includes("\n\n"));
+    blocks.push({ kind: "list", ordered, delimiter, start: numbers[0], text: rendered.join(loose ? "\n\n" : "\n") });
+    return blocks;
+  }
+
+  function listItems(list, itemHolders) {
+    const items = [];
+    const collect = (parent) => {
+      for (const child of elementsOf(parent)) {
+        const tag = child.localName;
+        if (tag === "li") {
+          items.push({ element: child, isItem: true, nested: [] });
+        } else if ((tag === "ul" || tag === "ol") && items.length) {
+          items.at(-1).nested.push(child);
+        } else if (SKIPPED_TAGS.has(tag)) {
+          continue;
+        } else if (tag !== "ul" && tag !== "ol" && itemHolders.has(child)) {
+          collect(child);
+        } else {
+          items.push({ element: child, isItem: false, nested: [] });
+        }
       }
+    };
+    collect(list);
+    return items;
+  }
+
+  function itemNumbers(list, items) {
+    const reversed = list.hasAttribute("reversed");
+    const start = Number.parseInt(list.getAttribute("start"), 10);
+    let next = Number.isNaN(start) ? (reversed ? items.length : 1) : start;
+    return items.map((item) => {
+      const value = item.isItem ? Number.parseInt(item.element.getAttribute("value"), 10) : Number.NaN;
+      if (!Number.isNaN(value)) next = value;
+      const current = Math.max(0, next);
+      next += reversed ? -1 : 1;
+      return current;
+    });
+  }
+
+  function renderItem(item, marker, ctx) {
+    const blocks = item.isItem ? renderBlocks(item.element, ctx) : renderNodes([item.element], ctx);
+    for (const nested of item.nested) renderList(nested, ctx, blocks);
+    if (!blocks.length) return "";
+
+    const indent = " ".repeat(marker.length);
+    let text = marker + indentLines(blocks[0].text, indent, true);
+    for (let index = 1; index < blocks.length; index += 1) {
+      const tight = blocks[index - 1].kind === "paragraph" && interruptsParagraph(blocks[index]);
+      text += (tight ? "\n" : "\n\n") + indentLines(blocks[index].text, indent);
+    }
+    return text;
+  }
+
+  function interruptsParagraph(block) {
+    return (
+      block.kind === "code" ||
+      block.kind === "quote" ||
+      block.kind === "heading" ||
+      (block.kind === "list" && (!block.ordered || block.start === 1))
+    );
+  }
+
+  function indentLines(text, indent, skipFirst = false) {
+    return text
+      .split("\n")
+      .map((line, index) => (line && !(skipFirst && index === 0) ? indent + line : line))
+      .join("\n");
+  }
+
+  function renderTable(table, ctx, blocks) {
+    if (ctx.inTable) return flattenTable(table, blocks);
+
+    const grid = tableGrid(table);
+    const caption = elementsOf(table).find((child) => child.localName === "caption");
+    const title = caption ? finishLine(renderInline(caption, grid ? { ...ctx, strong: true } : ctx)) : "";
+    if (title) blocks.push({ kind: "paragraph", text: grid ? `**${title}**` : title });
+
+    if (!grid) {
+      for (const row of tableRows(table)) {
+        for (const cell of tableCells(row)) renderBlocks(cell, ctx, blocks);
+      }
+      return blocks;
+    }
+
+    const cellCtx = { ...ctx, inTable: true };
+    const rows = grid.map((row) => Array.from(row, (cell) => (cell ? renderCell(cell, cellCtx) : "")));
+    const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
+    const line = (cells) => `| ${Array.from({ length: width }, (_, index) => cells[index] ?? "").join(" | ")} |`;
+    const lines = [line(rows[0]), line(Array(width).fill("---")), ...rows.slice(1).map(line)];
+    blocks.push({ kind: "table", text: lines.join("\n") });
+    return blocks;
+  }
+
+  function renderCell(cell, ctx) {
+    return renderBlocks(cell, ctx)
+      .map((block) => block.text.replaceAll("\n", "<br>"))
+      .join("<br>")
+      .replaceAll("|", "\\|");
+  }
+
+  function flattenTable(table, blocks) {
+    for (const row of tableRows(table)) {
+      const text = tableCells(row)
+        .map((cell) => collapse(textOf(cell)))
+        .filter(Boolean)
+        .join(" ");
+      if (text) blocks.push({ kind: "paragraph", text: escapeText(text) });
+    }
+    return blocks;
+  }
+
+  function tableGrid(table) {
+    const role = table.getAttribute("role");
+    if (role === "presentation" || role === "none") return null;
+
+    const grid = [];
+    let cellCount = 0;
+    for (const section of tableSections(table)) {
+      const carried = [];
+      section.forEach((tr, rowIndex) => {
+        const row = [];
+        let column = 0;
+        const skipCarried = () => {
+          while (carried[column] > 0) {
+            carried[column] -= 1;
+            row[column] = null;
+            column += 1;
+          }
+        };
+
+        for (const cell of tableCells(tr)) {
+          skipCarried();
+          const colspan = clampSpan(cell.getAttribute("colspan"), MAX_COLSPAN);
+          const rowsLeft = section.length - rowIndex;
+          const rowspan = cell.getAttribute("rowspan") === "0" ? rowsLeft : clampSpan(cell.getAttribute("rowspan"), rowsLeft);
+          for (let offset = 0; offset < colspan; offset += 1) {
+            row[column + offset] = offset ? null : cell;
+            if (rowspan > 1) carried[column + offset] = rowspan - 1;
+          }
+          column += colspan;
+          cellCount += 1;
+        }
+
+        for (; column < carried.length; column += 1) {
+          if (carried[column] > 0) {
+            carried[column] -= 1;
+            row[column] = null;
+          }
+        }
+        if (row.length) grid.push(row);
+      });
+    }
+    return cellCount > 1 ? grid : null;
+  }
+
+  function clampSpan(value, max) {
+    const span = Number.parseInt(value, 10);
+    return Number.isNaN(span) || span < 1 ? 1 : Math.min(span, max);
+  }
+
+  function tableSections(table) {
+    const head = [];
+    const body = [];
+    const foot = [];
+    let looseRows = null;
+    for (const child of elementsOf(table)) {
+      const tag = child.localName;
+      if (tag === "tr") {
+        if (!looseRows) body.push((looseRows = []));
+        looseRows.push(child);
+        continue;
+      }
+      looseRows = null;
+      const rows = elementsOf(child).filter((row) => row.localName === "tr");
+      if (tag === "thead") head.push(rows);
+      else if (tag === "tbody") body.push(rows);
+      else if (tag === "tfoot") foot.push(rows);
+    }
+    return [...head, ...body, ...foot];
+  }
+
+  function tableRows(table) {
+    return tableSections(table).flat();
+  }
+
+  function tableCells(row) {
+    return elementsOf(row).filter((cell) => cell.localName === "td" || cell.localName === "th");
+  }
+
+  function renderDefinitionList(list, ctx, blocks) {
+    const entries = [];
+    for (const item of definitionItems(list)) {
+      if (item.localName === "dt") {
+        const term = finishLine(renderInline(item, ctx));
+        if (term) entries.push([term]);
+        continue;
+      }
+      const definition = joinBlocks(renderBlocks(item, ctx));
+      if (!definition) continue;
+      if (!entries.length) entries.push([]);
+      entries.at(-1).push(`: ${indentLines(definition, "  ", true)}`);
+    }
+
+    const text = entries.map((lines) => lines.join("\n")).join("\n\n");
+    if (text) blocks.push({ kind: "dl", text });
+    return blocks;
+  }
+
+  function definitionItems(list) {
+    return elementsOf(list)
+      .flatMap((child) => (child.localName === "div" ? elementsOf(child) : [child]))
+      .filter((child) => child.localName === "dt" || child.localName === "dd");
+  }
+
+  function renderDetails(details, ctx, blocks) {
+    const summary = elementsOf(details).find((child) => child.localName === "summary");
+    const title = summary ? finishLine(renderInline(summary, { ...ctx, strong: true })) : "";
+    if (title) blocks.push({ kind: "paragraph", text: `**${title}**` });
+    return renderNodes(nodesOf(details).filter((node) => node !== summary), ctx, blocks);
+  }
+
+  function renderLinkedBlocks(link, ctx, blocks) {
+    const start = blocks.length;
+    renderBlocks(link, { ...ctx, link: true }, blocks);
+    const href = ctx.link ? "" : resolveUrl(link.getAttribute("href"), link.baseURI, LINK_PROTOCOLS);
+    if (!href || blocks.length === start) return blocks;
+
+    const target = linkTarget(href, link.getAttribute("title"));
+    const block = blocks.slice(start).find((candidate) => candidate.kind === "heading" || candidate.kind === "paragraph");
+    if (!block) {
+      blocks.push({ kind: "paragraph", text: `<${href}>` });
+    } else if (block.kind === "heading") {
+      const split = block.text.indexOf(" ") + 1;
+      block.text = `${block.text.slice(0, split)}[${block.text.slice(split)}](${target})`;
+    } else {
+      block.text = `[${block.text}](${target})`;
+    }
+    return blocks;
+  }
+
+  function renderInline(parent, ctx) {
+    if (ctx.depth > MAX_DEPTH) return renderText(textOf(parent));
+    const inner = { ...ctx, depth: ctx.depth + 1 };
+    let output = "";
+    for (let child = parent.firstChild; child; child = child.nextSibling) {
+      if (child.nodeType === TEXT_NODE) output += renderText(child.data);
+      else if (child.nodeType === ELEMENT_NODE) output += renderInlineElement(child, inner);
+    }
+    return output;
+  }
+
+  function renderInlineElement(element, ctx) {
+    const tag = element.localName;
+    if (SKIPPED_TAGS.has(tag)) return "";
+
+    switch (tag) {
+      case "br":
+        return HARD_BREAK;
+      case "wbr":
+        return "";
       case "strong":
-      case "b": {
-        const value = collapseInline(serializeInline(node, ctx)).trim();
-        return value ? `**${value}**` : "";
-      }
+      case "b":
+        return emphasize(element, ctx, "strong", "**");
       case "em":
-      case "i": {
-        const value = collapseInline(serializeInline(node, ctx)).trim();
-        return value ? `*${value}*` : "";
-      }
+      case "i":
+      case "var":
+      case "dfn":
+        return emphasize(element, ctx, "em", "*");
       case "del":
       case "s":
-      case "strike": {
-        const value = collapseInline(serializeInline(node, ctx)).trim();
-        return value ? `~~${value}~~` : "";
-      }
-      case "mark": {
-        const value = collapseInline(serializeInline(node, ctx)).trim();
-        return value ? `==${value}==` : "";
-      }
+      case "strike":
+        return emphasize(element, ctx, "del", "~~");
+      case "code":
       case "kbd":
       case "samp":
-        return serializeInlineCode(node.textContent || "");
-      case "code":
-        return node.parentElement && node.parentElement.tagName.toLowerCase() === "pre"
-          ? escapeCode(node.textContent || "")
-          : serializeInlineCode(node.textContent || "");
-      case "pre":
-        return serializePre(node);
+      case "tt":
+        return inlineCode(textOf(element));
       case "a":
-        return serializeLink(node, ctx);
-      case "ul":
-        return serializeList(node, ctx, false);
-      case "ol":
-        return serializeList(node, ctx, true);
-      case "table":
-        return serializeTable(node, ctx);
-      case "dl":
-        return serializeDefinitionList(node, ctx);
-      case "details":
-        return serializeDetails(node, ctx);
-      case "summary":
-      case "thead":
-      case "tbody":
-      case "tfoot":
-      case "tr":
-      case "td":
-      case "th":
-      case "span":
-      case "small":
-      case "label":
-      case "abbr":
-      case "cite":
-      case "time":
-        return serializeChildren(node, ctx);
+        return renderLink(element, ctx);
       case "img":
-      case "picture":
-      case "svg":
-        return "";
+        return renderImage(element);
+      case "input":
+        return renderInput(element);
+      case "select":
+        return renderText(element.selectedOptions?.[0]?.textContent ?? "");
+      case "button":
+        return ` ${renderInline(element, ctx)} `;
+      case "q":
+        return `"${renderInline(element, ctx)}"`;
+      case "rt":
+        return `(${renderInline(element, ctx)})`;
+      case "math":
+        return renderMath(element);
       default:
-        return serializeChildren(node, ctx);
+        if (!BLOCK_TAGS.has(tag)) return renderInline(element, ctx);
+        return (
+          PARAGRAPH_BREAK +
+          (tag === "pre" || tag === "table" ? renderText(textOf(element)) : renderInline(element, ctx)) +
+          PARAGRAPH_BREAK
+        );
     }
   }
 
-  function normalizeInput(input) {
-    if (input instanceof global.DocumentFragment) {
-      const container = global.document.createElement("div");
-      container.appendChild(input.cloneNode(true));
-      return container;
-    }
-
-    if (input instanceof global.Element) {
-      return input;
-    }
-
-    if (typeof input === "string") {
-      const template = global.document.createElement("template");
-      template.innerHTML = input;
-      const container = global.document.createElement("div");
-      container.appendChild(template.content.cloneNode(true));
-      return container;
-    }
-
-    throw new TypeError("Unsupported input for HTML to Markdown conversion.");
+  function emphasize(element, ctx, flag, marker) {
+    if (ctx[flag]) return renderInline(element, ctx);
+    return renderInline(element, { ...ctx, [flag]: true })
+      .split(/([\uE000\uE001])/)
+      .map((part, index) => (index % 2 ? part : withOuterSpace(part, (core) => `${marker}${core}${marker}`)))
+      .join("");
   }
 
-  function htmlToMarkdown(input) {
-    const root = normalizeInput(input);
-    return collapseBlocks(serializeChildren(root, { inline: false, listDepth: 0 }));
+  function withOuterSpace(text, render) {
+    const core = text.trim();
+    if (!core) return text ? " " : "";
+    const lead = text.length > text.trimStart().length ? " " : "";
+    const trail = text.length > text.trimEnd().length ? " " : "";
+    return `${lead}${render(core)}${trail}`;
+  }
+
+  function inlineCode(raw) {
+    return withOuterSpace(raw.replace(/[\r\n\u00a0]/g, " "), (code) => {
+      const fence = "`".repeat(longestRun(code, "`") + 1);
+      const pad = code.startsWith("`") || code.endsWith("`") ? " " : "";
+      return `${fence}${pad}${code.replaceAll(" ", CODE_SPACE)}${pad}${fence}`;
+    });
+  }
+
+  function renderLink(link, ctx) {
+    const content = renderInline(link, { ...ctx, link: true }).replace(BREAKS, " ");
+    const text = content.trim();
+    if (PERMALINK_TEXT.has(text)) return "";
+    const href = ctx.link ? "" : resolveUrl(link.getAttribute("href"), link.baseURI, LINK_PROTOCOLS);
+    if (!href) return content;
+    if (!text) return link.querySelector("img") ? content : `${content}<${href}>`;
+    const target = linkTarget(href, link.getAttribute("title"));
+    return withOuterSpace(content, (label) => `[${label}](${target})`);
+  }
+
+  function linkTarget(href, title) {
+    const cleanTitle = collapse(title ?? "");
+    return cleanTitle ? `${formatUrl(href)} "${cleanTitle.replace(/["\\]/g, "\\$&")}"` : formatUrl(href);
+  }
+
+  function formatUrl(url) {
+    return url.replaceAll("(", "%28").replaceAll(")", "%29");
+  }
+
+  function resolveUrl(raw, base, protocols) {
+    const value = raw?.trim();
+    if (!value) return "";
+    try {
+      const url = new URL(value, base);
+      return protocols.has(url.protocol) ? url.href : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function renderImage(image) {
+    if (isDecorativeImage(image)) return "";
+    const alt = collapse(image.getAttribute("alt") ?? "");
+    const src = imageSource(image);
+    if (!src) return alt ? renderText(alt) : "";
+    return `![${alt.replace(/[\\[\]]/g, "\\$&")}](${formatUrl(src)})`;
+  }
+
+  function isDecorativeImage(image) {
+    const role = image.getAttribute("role");
+    return (
+      image.getAttribute("alt") === "" ||
+      role === "presentation" ||
+      role === "none" ||
+      isTiny(image.getAttribute("width")) ||
+      isTiny(image.getAttribute("height"))
+    );
+  }
+
+  function isTiny(size) {
+    return size !== null && Number.parseFloat(size) <= 2;
+  }
+
+  function imageSource(image) {
+    const candidates = [
+      image.getAttribute("src"),
+      ...LAZY_SOURCE_ATTRIBUTES.map((name) => image.getAttribute(name)),
+      largestSrcsetCandidate(image.getAttribute("srcset")),
+      largestSrcsetCandidate(image.getAttribute("data-srcset"))
+    ];
+    let inlineData = "";
+    for (const candidate of candidates) {
+      const url = resolveUrl(candidate, image.baseURI, IMAGE_PROTOCOLS);
+      if (!url) continue;
+      if (!url.startsWith("data:")) return url;
+      if (!inlineData && url.startsWith("data:image/") && url.length <= MAX_DATA_URL_LENGTH) inlineData = url;
+    }
+    return inlineData;
+  }
+
+  function largestSrcsetCandidate(srcset) {
+    if (!srcset) return "";
+    let best = "";
+    let bestSize = -1;
+    let index = 0;
+    while (index < srcset.length) {
+      while (index < srcset.length && (srcset[index] === "," || /\s/.test(srcset[index]))) index += 1;
+      let end = index;
+      while (end < srcset.length && !/\s/.test(srcset[end])) end += 1;
+      let url = srcset.slice(index, end);
+      let descriptor = "";
+      if (url.endsWith(",")) {
+        while (url.endsWith(",")) url = url.slice(0, -1);
+        index = end;
+      } else {
+        const comma = srcset.indexOf(",", end);
+        const stop = comma < 0 ? srcset.length : comma;
+        descriptor = srcset.slice(end, stop).trim();
+        index = stop + 1;
+      }
+      const size = Number.parseFloat(descriptor) || 1;
+      if (url && size > bestSize) {
+        best = url;
+        bestSize = size;
+      }
+    }
+    return best;
+  }
+
+  function renderInput(input) {
+    const type = input.getAttribute("type")?.toLowerCase();
+    if (type !== "checkbox" && type !== "radio") return "";
+    return input.checked ? "[x] " : "[ ] ";
+  }
+
+  function renderMath(math) {
+    const tex = math.querySelector('annotation[encoding="application/x-tex"]')?.textContent.trim();
+    return tex ? `$${tex}$` : renderText(textOf(math));
+  }
+
+  function renderText(data) {
+    return escapeText(data.replace(PRIVATE_MARKERS, "").replace(HTML_WHITESPACE, " "));
+  }
+
+  function escapeText(text) {
+    return text.replace(INLINE_SPECIAL, (char, index, source) =>
+      needsEscape(char, index, source) ? `\\${char}` : char
+    );
+  }
+
+  function needsEscape(char, index, source) {
+    const next = source[index + 1] ?? "";
+    switch (char) {
+      case "\\":
+        return !next || ASCII_PUNCTUATION.test(next);
+      case "_":
+        return !(WORD_CHARACTER.test(source[index - 1] ?? "") && WORD_CHARACTER.test(next));
+      case "<":
+        return TAG_START.test(next);
+      case "&":
+        ENTITY_REFERENCE.lastIndex = index + 1;
+        return ENTITY_REFERENCE.test(source);
+      case "~":
+        return source[index - 1] === "~" || next === "~";
+      default:
+        return true;
+    }
+  }
+
+  function escapeLineStart(line) {
+    if (line[0] === ">" || BLOCK_MARKER.test(line) || SETEXT_OR_RULE.test(line)) return `\\${line}`;
+    const ordered = ORDERED_MARKER.exec(line);
+    return ordered ? `${ordered[1]}\\${line.slice(ordered[1].length)}` : line;
+  }
+
+  function plainText(root) {
+    return textOf(root, true)
+      .replace(/\u00a0/g, " ")
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  function textOf(node, collapseSpace = false) {
+    const parts = [];
+    let last = "\n";
+    const push = (text) => {
+      if (!text) return;
+      parts.push(text);
+      last = text[text.length - 1];
+    };
+    const endLine = () => {
+      if (parts.length && last !== "\n") push("\n");
+    };
+    const walk = (parent, depth, preformatted) => {
+      for (let child = parent.firstChild; child; child = child.nextSibling) {
+        if (child.nodeType === TEXT_NODE) {
+          push(collapseSpace && !preformatted ? collapseText(child.data, last) : child.data);
+          continue;
+        }
+        if (child.nodeType !== ELEMENT_NODE) continue;
+        const tag = child.localName;
+        if (tag === "br") {
+          push("\n");
+          continue;
+        }
+        if (depth > MAX_DEPTH || SKIPPED_TAGS.has(tag) || isGutter(child)) continue;
+        const block = BLOCK_TAGS.has(tag);
+        if (block) endLine();
+        walk(child, depth + 1, preformatted || tag === "pre");
+        if (block) endLine();
+      }
+    };
+    walk(node, 0, false);
+    return parts.join("").replace(PRIVATE_MARKERS, "");
+  }
+
+  function collapseText(data, last) {
+    const text = data.replace(/\s+/g, " ");
+    return last === "\n" || last === " " ? text.trimStart() : text;
+  }
+
+  function isGutter(element) {
+    return classesOf(element).some((name) => GUTTER_CLASSES.has(name));
+  }
+
+  function classesOf(element) {
+    const value = element.getAttribute("class");
+    return value ? value.trim().split(/\s+/) : [];
+  }
+
+  function nodesOf(parent) {
+    const nodes = [];
+    for (let node = parent.firstChild; node; node = node.nextSibling) nodes.push(node);
+    return nodes;
+  }
+
+  function elementsOf(parent) {
+    const elements = [];
+    for (let element = parent.firstElementChild; element; element = element.nextElementSibling) elements.push(element);
+    return elements;
+  }
+
+  function collapse(text) {
+    return text.replace(/\s+/g, " ").trim();
+  }
+
+  function looksLikeCss(text) {
+    const source = text.trim();
+    if (source.length < 20 || !CSS_START.test(source)) return false;
+
+    let cursor = 0;
+    let declarations = 0;
+    while (cursor < source.length) {
+      const open = source.indexOf("{", cursor);
+      if (open < 0 || open - cursor > MAX_SELECTOR_LENGTH) break;
+      const close = closingBrace(source, open);
+      if (close < 0) return false;
+      const found = source
+        .slice(open + 1, close)
+        .split(/[;{}]/)
+        .filter((part) => CSS_DECLARATION.test(part)).length;
+      if (!found) return false;
+      declarations += found;
+      cursor = close + 1;
+      while (cursor < source.length && /\s/.test(source[cursor])) cursor += 1;
+    }
+    return declarations >= 2 && cursor >= source.length * 0.9;
+  }
+
+  function closingBrace(text, open) {
+    let depth = 0;
+    for (let index = open; index < text.length; index += 1) {
+      if (text[index] === "{") depth += 1;
+      else if (text[index] === "}" && --depth === 0) return index;
+    }
+    return -1;
   }
 
   WMExt.markdown = {
+    convert,
+    classesOf,
+    createContainer,
+    elementsOf,
     htmlToMarkdown,
-    normalizeUrl
+    plainText,
+    tableGrid,
+    textOf
   };
-})(window);
+})();

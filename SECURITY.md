@@ -2,26 +2,26 @@
 
 ## Supported version
 
-The current supported version is `0.1.x`.
+The current supported version is `0.2.x`.
 
 ## Privacy model
 
-Wtyczka dziala lokalnie w przegladarce. Nie wysyla zaznaczonej tresci, URL-i ani ustawien do zewnetrznych serwerow.
+Wtyczka działa lokalnie w przeglądarce. Nie wysyła zaznaczonej treści, adresów URL ani ustawień do zewnętrznych serwerów.
 
-Tryb zbierania do sesji zapisuje pelny Markdown, adres strony, domene i czas przechwycenia w lokalnym storage przegladarki. Uzytkownik moze wyczyscic sesje w popupie przyciskiem `Wyczysc sesje`.
+Sesja zapisuje Markdown, tytuł, adres strony, domenę i czas przechwycenia w `chrome.storage.local`. Ostatni wynik trafia do `chrome.storage.session` i znika po zamknięciu przeglądarki. Sesję czyści przycisk **Wyczyść** w popupie.
+
+Ustawienia (tryb, wyłączone domeny, instrukcja dla AI) są w `chrome.storage.sync`, więc Chrome może je synchronizować między urządzeniami zalogowanego użytkownika.
 
 ## Permissions
 
-Rozszerzenie uzywa Manifest V3 i nastepujacych uprawnien:
-
-- `activeTab`: praca na aktywnej karcie po akcji uzytkownika.
+- `<all_urls>` w `host_permissions` i `content_scripts.matches`: lekki skrypt przycisku `MD` na zwykłych stronach i konwersja w ramkach.
+- `scripting`: wstrzyknięcie silnika konwersji dopiero po akcji użytkownika.
+- `offscreen`, `clipboardWrite`: zapis do schowka ze skrótu i menu kontekstowego.
 - `contextMenus`: menu kontekstowe dla zaznaczenia.
-- `storage`: zapis ustawien i sesji.
-- `clipboardWrite`: kopiowanie Markdown do schowka.
-- `<all_urls>` w `host_permissions` i `content_scripts.matches`: content script jest dostepny na zwyklych stronach, zeby przycisk `MD`, skrot i popup dzialaly bez dodatkowej instalacji per domena.
+- `storage`: ustawienia, sesja i ostatni wynik.
 
-Chrome nadal blokuje rozszerzenia na stronach systemowych, Chrome Web Store i czesci specjalnych widokow.
+Linki w wyniku przechodzą przez allowlistę protokołów (`http`, `https`, `mailto`, `tel`, względne). Interfejs na stronie działa w zamkniętym Shadow DOM i reaguje tylko na zdarzenia z `isTrusted`.
 
 ## Reporting
 
-Zglaszaj problemy bezpieczenstwa prywatnie wlascicielowi repozytorium. Nie publikuj publicznie przykladow zawierajacych cudze dane, fragmenty poczty, panele administracyjne ani wewnetrzne dokumenty.
+Zgłaszaj problemy bezpieczeństwa prywatnie właścicielowi repozytorium. Nie publikuj przykładów zawierających cudze dane, fragmenty poczty, panele administracyjne ani wewnętrzne dokumenty.

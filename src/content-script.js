@@ -1,417 +1,232 @@
-(function (global) {
-  const WMExt = (global.WMExt = global.WMExt || {});
-  const uiState = {
-    actionButton: null,
-    toast: null,
-    selectionTimer: 0,
-    hideTimer: 0,
-    lastPointer: null,
-    pointerDown: false,
-    selectionSnapshot: null
-  };
-
-  function clearSelection() {
-    const selection = global.getSelection();
-    if (!selection) {
-      return;
+(() => {
+  const WMExt = (globalThis.WMExt ??= {});
+  const TAKEOVER_EVENT = "wm-markdown:takeover";
+  const BUTTON_SIZE = 30;
+  const GAP = 6;
+  const TOAST_MS = 2600;
+  const STYLES = `
+    :host { all: initial; }
+    button {
+      position: fixed; top: 0; left: 0; box-sizing: border-box;
+      width: ${BUTTON_SIZE}px; height: ${BUTTON_SIZE}px; margin: 0; padding: 0;
+      border: 1px solid rgb(255 255 255 / 0.25); border-radius: 9px;
+      background: #1f5f4a; color: #fff; cursor: pointer;
+      font: 700 11px/1 system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: 0.02em;
+      box-shadow: 0 6px 18px rgb(0 0 0 / 0.22);
+      transition: background-color 120ms ease, transform 120ms ease;
     }
+    button:hover { background: #184a39; transform: scale(1.06); }
+    button:active { transform: scale(0.96); }
+    button[hidden] { display: none; }
+    .toast {
+      position: fixed; right: 16px; bottom: 16px; max-width: min(360px, calc(100vw - 32px));
+      padding: 11px 14px; border-radius: 12px; background: #1a231f; color: #f7f4ee;
+      font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+      box-shadow: 0 16px 40px rgb(0 0 0 / 0.28);
+      opacity: 0; translate: 0 8px; pointer-events: none;
+      transition: opacity 160ms ease, translate 160ms ease;
+    }
+    .toast.visible { opacity: 1; translate: 0 0; }
+    .toast[data-tone="error"] { background: #7f1d1d; }
+    .toast[data-tone="warning"] { background: #78350f; }
+    @media (prefers-reduced-motion: reduce) { button, .toast { transition: none; } }
+  `;
 
+  const alive = () => Boolean(globalThis.chrome?.runtime?.id);
+  if (WMExt.stub?.alive()) return;
+  WMExt.stub?.teardown();
+  document.dispatchEvent(new CustomEvent(TAKEOVER_EVENT));
+
+  const t = (key, substitutions) => chrome.i18n.getMessage(key, substitutions);
+  const controller = new AbortController();
+  const { signal } = controller;
+  const ui = { host: null, button: null, toast: null };
+  let prefs = null;
+  let prefsLoading = null;
+  let snapshot = null;
+  let pointerDown = false;
+  let dismissed = false;
+  let frame = 0;
+  let toastTimer = 0;
+
+  function topHostname() {
+    const origins = location.ancestorOrigins;
+    const origin = origins?.length ? origins[origins.length - 1] : location.origin;
     try {
-      selection.removeAllRanges();
-    } catch (error) {
-      // Ignore browser-specific selection errors.
+      return new URL(origin).hostname;
+    } catch {
+      return location.hostname;
     }
   }
 
-  function isEditableNode(node) {
-    if (!node || !(node instanceof global.Node)) {
-      return false;
-    }
-
-    const element = node.nodeType === global.Node.ELEMENT_NODE ? node : node.parentElement;
-    if (!element) {
-      return false;
-    }
-
-    return Boolean(
-      element.closest("input, textarea, [contenteditable='true'], [contenteditable=''], [role='textbox']")
-    );
+  function loadPrefs() {
+    prefsLoading ??= WMExt.settings.load().then((value) => (prefs = value));
+    return prefsLoading;
   }
 
-  function getCurrentSelectionSnapshot() {
-    const selection = global.getSelection();
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
-      return null;
-    }
-
-    if (isEditableNode(selection.anchorNode)) {
-      return null;
-    }
-
-    const text = selection.toString().replace(/\u00a0/g, " ").trim();
-    if (!text) {
-      return null;
-    }
-
-    try {
-      const range = selection.getRangeAt(0);
-      const container = global.document.createElement("div");
-      container.appendChild(range.cloneContents());
-
-      return {
-        html: container.innerHTML,
-        text,
-        title: global.document.title || "",
-        url: global.location?.href || ""
-      };
-    } catch (error) {
-      return null;
-    }
+  function buttonAllowed() {
+    return prefs.showButton && !WMExt.settings.isExcluded(topHostname(), prefs.excludedDomains);
   }
 
-  function rememberSelectionSnapshot() {
-    const snapshot = getCurrentSelectionSnapshot();
-    if (snapshot) {
-      uiState.selectionSnapshot = snapshot;
-    }
-
-    return snapshot;
+  function ensureUi() {
+    if (ui.host?.isConnected) return ui;
+    const host = document.createElement("wm-markdown-ui");
+    host.style.cssText = "all:initial!important;position:fixed!important;top:0!important;left:0!important;width:0!important;height:0!important;z-index:2147483647!important;";
+    const root = host.attachShadow({ mode: "closed" });
+    root.innerHTML = `<style>${STYLES}</style><button type="button" tabindex="-1" hidden>MD</button><div class="toast" role="status" aria-live="polite"></div>`;
+    ui.button = root.querySelector("button");
+    ui.toast = root.querySelector(".toast");
+    ui.button.title = t("buttonTitle");
+    ui.button.setAttribute("aria-label", t("buttonTitle"));
+    ui.button.addEventListener("pointerdown", (event) => event.preventDefault(), { signal });
+    ui.button.addEventListener("click", onButtonClick, { signal });
+    document.documentElement.append(host);
+    ui.host = host;
+    return ui;
   }
 
-  function ensureToast() {
-    if (uiState.toast?.isConnected) {
-      return uiState.toast;
-    }
+  function isOwnEvent(event) {
+    return Boolean(ui.host) && event.composedPath().includes(ui.host);
+  }
 
-    const toast = global.document.createElement("div");
-    toast.style.cssText = [
-      "position: fixed",
-      "right: 16px",
-      "bottom: 16px",
-      "z-index: 2147483647",
-      "max-width: 320px",
-      "padding: 11px 14px",
-      "border-radius: 14px",
-      "background: rgba(26, 35, 31, 0.94)",
-      "color: #f7f4ee",
-      "font: 13px/1.4 system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      "box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28)",
-      "opacity: 0",
-      "transform: translateY(8px)",
-      "pointer-events: none",
-      "transition: opacity 140ms ease, transform 140ms ease"
-    ].join(";");
+  function readSelection() {
+    const selection = getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed) return null;
+    const text = selection.toString();
+    return text.trim() ? { selection, range: selection.getRangeAt(0), text } : null;
+  }
 
-    global.document.documentElement.appendChild(toast);
-    uiState.toast = toast;
-    return toast;
+  function isBackward({ anchorNode, anchorOffset, focusNode, focusOffset }) {
+    if (anchorNode === focusNode) return focusOffset < anchorOffset;
+    return Boolean(anchorNode.compareDocumentPosition(focusNode) & Node.DOCUMENT_POSITION_PRECEDING);
+  }
+
+  function edgeRect(selection) {
+    const range = selection.getRangeAt(selection.rangeCount - 1);
+    const rects = [...range.getClientRects()].filter((rect) => rect.width || rect.height);
+    if (!rects.length) return range.getBoundingClientRect();
+    return isBackward(selection) ? { ...rects[0].toJSON(), backward: true } : rects.at(-1);
+  }
+
+  function place(selection) {
+    const rect = edgeRect(selection);
+    const x = rect.backward ? rect.left - BUTTON_SIZE - GAP : rect.right + GAP;
+    const y = rect.backward ? rect.top - BUTTON_SIZE - GAP : rect.bottom + GAP;
+    const clamp = (value, max) => Math.min(Math.max(value, GAP), max - BUTTON_SIZE - GAP);
+    ui.button.style.translate = `${clamp(x, innerWidth)}px ${clamp(y, innerHeight)}px`;
+  }
+
+  const trackOptions = { passive: true, capture: true };
+  let tracking = null;
+
+  function showButton(selection) {
+    ensureUi();
+    place(selection);
+    ui.button.hidden = false;
+    if (tracking) return;
+    tracking = new AbortController();
+    const options = { ...trackOptions, signal: AbortSignal.any([signal, tracking.signal]) };
+    addEventListener("scroll", schedule, options);
+    addEventListener("resize", schedule, options);
+  }
+
+  function hideButton() {
+    if (ui.button) ui.button.hidden = true;
+    tracking?.abort();
+    tracking = null;
+  }
+
+  function schedule() {
+    frame ||= requestAnimationFrame(update);
+  }
+
+  async function update() {
+    frame = 0;
+    if (!alive()) return teardown();
+    const current = readSelection();
+    if (current) snapshot = { range: current.range.cloneRange(), text: current.text };
+    else if (document.hasFocus()) snapshot = null;
+
+    if (!current || pointerDown || dismissed) return hideButton();
+    if (!prefs) await loadPrefs();
+    if (buttonAllowed() && readSelection()) showButton(current.selection);
+    else hideButton();
+  }
+
+  function getSnapshot() {
+    const range = snapshot?.range;
+    return range?.startContainer.isConnected && range.endContainer.isConnected ? snapshot : null;
+  }
+
+  async function onButtonClick(event) {
+    if (!event.isTrusted) return;
+    if (!alive()) return teardown();
+    hideButton();
+    const response = await chrome.runtime.sendMessage({ type: "WM_CONVERT" }).catch(() => null);
+    showToast(response?.message ?? t("errorGeneric"), response?.tone ?? "error");
   }
 
   function showToast(message, tone) {
-    const toast = ensureToast();
+    if (!message) return;
+    const { toast } = ensureUi();
     toast.textContent = message;
-    toast.style.background =
-      tone === "error"
-        ? "rgba(127, 29, 29, 0.96)"
-        : tone === "warning"
-          ? "rgba(120, 53, 15, 0.96)"
-          : "rgba(26, 35, 31, 0.94)";
-    toast.style.opacity = "1";
-    toast.style.transform = "translateY(0)";
-
-    global.clearTimeout(showToast.timerId);
-    showToast.timerId = global.setTimeout(() => {
-      toast.style.opacity = "0";
-      toast.style.transform = "translateY(8px)";
-    }, 2200);
+    toast.dataset.tone = tone;
+    toast.classList.add("visible");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("visible"), TOAST_MS);
   }
 
-  function ensureActionButton() {
-    if (uiState.actionButton?.isConnected) {
-      return uiState.actionButton;
+  function onMessage(message) {
+    if (message?.type === "WM_TOAST") showToast(message.message, message.tone);
+    return false;
+  }
+
+  function onSettingsChanged(changes, area) {
+    if (area !== "sync" || !changes[WMExt.settings.STORAGE_KEY]) return;
+    prefs = WMExt.settings.normalize(changes[WMExt.settings.STORAGE_KEY].newValue);
+    if (!buttonAllowed()) hideButton();
+  }
+
+  function teardown() {
+    controller.abort();
+    tracking = null;
+    cancelAnimationFrame(frame);
+    clearTimeout(toastTimer);
+    ui.host?.remove();
+    try {
+      chrome.runtime.onMessage.removeListener(onMessage);
+      chrome.storage.onChanged.removeListener(onSettingsChanged);
+    } catch {
+      /* extension context already invalidated */
     }
-
-    const button = global.document.createElement("button");
-    button.type = "button";
-    button.textContent = "MD";
-    button.setAttribute("aria-label", "Konwertuj zaznaczenie do Markdown");
-    button.style.cssText = [
-      "position: fixed",
-      "z-index: 2147483647",
-      "display: none",
-      "align-items: center",
-      "justify-content: center",
-      "min-width: 44px",
-      "height: 36px",
-      "padding: 0 12px",
-      "border: 0",
-      "border-radius: 999px",
-      "background: linear-gradient(135deg, #1f5f4a, #2b7a60)",
-      "color: #ffffff",
-      "font: 700 12px/1 system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      "box-shadow: 0 12px 28px rgba(31, 95, 74, 0.28)",
-      "cursor: pointer",
-      "user-select: none",
-      "pointer-events: auto"
-    ].join(";");
-
-    button.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-    });
-
-    button.addEventListener("click", async (event) => {
-      event.preventDefault();
-      hideActionButton();
-      const settings = await WMExt.settings.loadSettings();
-      const result = await WMExt.extractor.quickConvert(
-        {
-          mode: "smart",
-          collectMode: settings.collectMode,
-          autoCopy: true,
-          trigger: "floating-button",
-          selectionSnapshot: uiState.selectionSnapshot
-        },
-        global
-      );
-
-      if (!result.ok) {
-        showToast(result.error, "warning");
-        return;
-      }
-
-      clearSelection();
-      uiState.lastPointer = null;
-      uiState.selectionSnapshot = null;
-
-      if (result.copied && result.appendedToSession) {
-        showToast(`Skopiowano Markdown i dopisano do sesji (${result.sessionStats?.fragments || 0}).`);
-        return;
-      }
-
-      if (result.copied) {
-        showToast("Skopiowano Markdown do schowka.");
-        return;
-      }
-
-      if (result.appendedToSession) {
-        showToast("Dopisano do sesji, ale kopiowanie się nie powiodło.", "warning");
-        return;
-      }
-
-      showToast("Markdown wygenerowany, ale nie udało się go skopiować.", "warning");
-    });
-
-    global.document.documentElement.appendChild(button);
-    uiState.actionButton = button;
-    return button;
+    if (WMExt.stub?.teardown === teardown) delete WMExt.stub;
   }
 
-  function hideActionButton() {
-    global.clearTimeout(uiState.hideTimer);
-    const button = ensureActionButton();
-    button.style.display = "none";
-  }
-
-  function scheduleHideActionButton(delay) {
-    global.clearTimeout(uiState.hideTimer);
-    uiState.hideTimer = global.setTimeout(hideActionButton, delay || 0);
-  }
-
-  function getSelectionAnchorPoint(selection) {
-    if (uiState.lastPointer && selection && !selection.isCollapsed) {
-      return {
-        left: uiState.lastPointer.clientX,
-        top: uiState.lastPointer.clientY
-      };
+  document.addEventListener("selectionchange", () => {
+    dismissed = false;
+    if (!pointerDown) schedule();
+  }, { signal });
+  document.addEventListener("pointerdown", (event) => {
+    if (isOwnEvent(event)) return;
+    pointerDown = event.button === 0;
+    if (pointerDown) hideButton();
+  }, { signal, capture: true });
+  addEventListener("pointerup", () => {
+    if (!pointerDown) return;
+    pointerDown = false;
+    schedule();
+  }, { signal, capture: true });
+  addEventListener("pointercancel", () => (pointerDown = false), { signal, capture: true });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && ui.button && !ui.button.hidden) {
+      dismissed = true;
+      hideButton();
     }
+  }, { signal, capture: true });
+  document.addEventListener(TAKEOVER_EVENT, teardown, { signal, once: true });
 
-    if (!selection || selection.rangeCount === 0) {
-      return null;
-    }
+  chrome.runtime.onMessage.addListener(onMessage);
+  chrome.storage.onChanged.addListener(onSettingsChanged);
 
-    const rect = selection.getRangeAt(0).getBoundingClientRect();
-    if (!rect || (!rect.width && !rect.height)) {
-      return null;
-    }
-
-    return {
-      left: Math.max(rect.right, rect.left),
-      top: rect.bottom
-    };
-  }
-
-  function positionActionButton() {
-    const selection = global.getSelection();
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
-      hideActionButton();
-      return;
-    }
-
-    if (isEditableNode(selection.anchorNode)) {
-      hideActionButton();
-      return;
-    }
-
-    const text = selection.toString().trim();
-    if (!text) {
-      hideActionButton();
-      return;
-    }
-
-    rememberSelectionSnapshot();
-
-    const point = getSelectionAnchorPoint(selection);
-    if (!point) {
-      hideActionButton();
-      return;
-    }
-
-    const button = ensureActionButton();
-    const gap = 12;
-    const maxLeft = Math.max(global.innerWidth - 64, 8);
-    const maxTop = Math.max(global.innerHeight - 52, 8);
-    button.style.display = "inline-flex";
-    button.style.left = `${Math.min(Math.max(point.left + gap, 8), maxLeft)}px`;
-    button.style.top = `${Math.min(Math.max(point.top + gap, 8), maxTop)}px`;
-  }
-
-  function queueActionButtonPosition() {
-    global.clearTimeout(uiState.selectionTimer);
-    rememberSelectionSnapshot();
-    uiState.selectionTimer = global.setTimeout(positionActionButton, 16);
-  }
-
-  function updatePointer(event) {
-    uiState.lastPointer = {
-      clientX: event.clientX,
-      clientY: event.clientY
-    };
-  }
-
-  function handlePointerDown(event) {
-    if (uiState.actionButton && uiState.actionButton.contains(event.target)) {
-      return;
-    }
-
-    uiState.pointerDown = true;
-    uiState.selectionSnapshot = null;
-    updatePointer(event);
-  }
-
-  function handlePointerMove(event) {
-    updatePointer(event);
-    if (uiState.pointerDown) {
-      queueActionButtonPosition();
-    }
-  }
-
-  function handlePointerUp(event) {
-    uiState.pointerDown = false;
-    updatePointer(event);
-    queueActionButtonPosition();
-  }
-
-  function handleDocumentClick(event) {
-    if (uiState.actionButton && uiState.actionButton.contains(event.target)) {
-      return;
-    }
-
-    const selection = global.getSelection();
-    if (!selection || selection.isCollapsed) {
-      scheduleHideActionButton(0);
-    }
-  }
-
-  async function handleExtractSelection(message) {
-    const result = await WMExt.extractor.extractSelection(
-      {
-        ...(message.options || {}),
-        selectionSnapshot: uiState.selectionSnapshot
-      },
-      global
-    );
-
-    if (result.ok) {
-      clearSelection();
-      uiState.lastPointer = null;
-      uiState.selectionSnapshot = null;
-    }
-
-    return result;
-  }
-
-  async function handleQuickConvert(message) {
-    const result = await WMExt.extractor.quickConvert(
-      {
-        ...(message.options || {}),
-        selectionSnapshot: uiState.selectionSnapshot
-      },
-      global
-    );
-
-    if (!result.ok) {
-      showToast(result.error, "warning");
-      return result;
-    }
-
-    clearSelection();
-    uiState.lastPointer = null;
-    uiState.selectionSnapshot = null;
-
-    if (result.copied && result.appendedToSession) {
-      showToast(`Skopiowano Markdown i dopisano do sesji (${result.sessionStats?.fragments || 0}).`);
-    } else if (result.copied) {
-      showToast("Skopiowano Markdown do schowka.");
-    } else if (message.options?.autoCopy) {
-      const text = result.appendedToSession
-        ? "Markdown dopisany do sesji, ale kopiowanie się nie powiodło."
-        : "Markdown wygenerowany, ale kopiowanie się nie powiodło.";
-      showToast(text, "warning");
-    } else if (result.appendedToSession) {
-      showToast(`Markdown dopisany do sesji (${result.sessionStats?.fragments || 0}).`);
-    } else {
-      showToast("Markdown wygenerowany.");
-    }
-
-    return result;
-  }
-
-  function sendAsyncResponse(task, sendResponse) {
-    task()
-      .then(sendResponse)
-      .catch((error) => {
-        sendResponse({
-          ok: false,
-          error: error?.message || "Nie udało się wykonać akcji rozszerzenia."
-        });
-      });
-  }
-
-  if (global.chrome?.runtime?.onMessage) {
-    global.chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      if (!message?.type) {
-        return undefined;
-      }
-
-      if (message.type === "WM_EXTRACT_SELECTION") {
-        sendAsyncResponse(() => handleExtractSelection(message), sendResponse);
-        return true;
-      }
-
-      if (message.type === "WM_RUN_QUICK_CONVERT") {
-        sendAsyncResponse(() => handleQuickConvert(message), sendResponse);
-        return true;
-      }
-
-      return undefined;
-    });
-  }
-
-  global.document.addEventListener("selectionchange", queueActionButtonPosition, true);
-  global.document.addEventListener("mousedown", handlePointerDown, true);
-  global.document.addEventListener("mousemove", handlePointerMove, true);
-  global.document.addEventListener("mouseup", handlePointerUp, true);
-  global.document.addEventListener("click", handleDocumentClick, true);
-  global.addEventListener("scroll", queueActionButtonPosition, true);
-  global.addEventListener("resize", queueActionButtonPosition, true);
-})(window);
+  WMExt.stub = { alive, getSnapshot, teardown };
+})();

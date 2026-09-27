@@ -1,321 +1,184 @@
-(function (global) {
-  const WMExt = (global.WMExt = global.WMExt || {});
+(() => {
+  const WMExt = (globalThis.WMExt ??= {});
 
-  const ALWAYS_REMOVE_TAGS = new Set([
-    "script",
-    "style",
-    "noscript",
-    "template",
-    "iframe",
-    "object",
-    "embed",
-    "canvas",
-    "svg",
-    "picture",
-    "video",
-    "audio",
-    "source",
-    "track",
-    "button",
-    "textarea",
-    "select",
-    "option",
-    "optgroup",
-    "form"
+  const WRAP_ATTRIBUTE = "data-wm-wrap";
+  const SUBSTANTIAL_TEXT = 200;
+  const LINK_LIST_MIN_ITEMS = 4;
+  const LINK_LIST_MAX_ITEM = 40;
+  const LINK_LIST_MAX_AVERAGE = 24;
+  const LINK_LIST_RATIO = 0.9;
+
+  const REMOVED_TAGS = new Set([
+    "audio", "canvas", "dialog", "embed", "iframe", "map", "noscript", "object", "script", "source",
+    "style", "svg", "template", "textarea", "track", "video"
   ]);
-
-  const SMART_REMOVE_TAGS = new Set([
-    "nav",
-    "aside",
-    "dialog",
-    "footer"
+  const STRICT_TAGS = new Set(["aside", "footer", "nav"]);
+  const CONTAINER_TAGS = new Set([
+    "article", "aside", "div", "figure", "footer", "form", "header", "ins", "li", "nav", "ol", "section", "ul"
   ]);
+  const CONTENT_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6", "ol", "p", "pre", "table", "ul"]);
+  const MAJOR_HEADINGS = new Set(["h1", "h2"]);
 
-  const JUNK_PATTERN =
-    /(^|[\W_])(ad[sx]?|advert|advertising|promo|sponsor|sponsored|banner|popup|pop-up|modal|cookie|consent|gdpr|cmp|newsletter|subscribe|signup|sign-up|paywall|overlay|drawer|toast|tooltip|feedback|chat|interstitial|widget|share|social|related|recommend|recommended|breadcrumb|sidebar|menu|toolbar|sticky|fixed)([\W_]|$)/i;
+  const REMOVED_ROLES = new Set(["alertdialog", "dialog", "toolbar", "tooltip"]);
+  const STRICT_ROLES = new Set(["complementary", "contentinfo", "menu", "menubar", "navigation"]);
 
-  const STYLE_JUNK_PATTERN =
-    /(display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0\b|position\s*:\s*fixed|position\s*:\s*sticky)/i;
-
-  const SMART_ROLES = new Set([
-    "dialog",
-    "alertdialog",
-    "presentation",
-    "banner",
-    "navigation",
-    "complementary",
-    "toolbar",
-    "tooltip",
-    "menu",
-    "menuitem"
+  const SCREEN_READER_CLASSES = new Set([
+    "a11y-hidden", "element-invisible", "screen-reader-only", "screen-reader-text", "screenreader",
+    "sr-only", "visually-hidden", "visuallyhidden"
   ]);
-
-  const CSS_TEXT_PATTERN =
-    /(@media|@supports|@container|:root\s*\{|--[a-z0-9_-]+\s*:|[.#]?[a-z0-9_-]+(?:\s+[a-z0-9_.#:-]+)*\s*\{[^}]*:[^}]*;)/i;
-
-  const BLOCKISH_TAGS = new Set([
-    "div",
-    "section",
-    "article",
-    "p",
-    "span",
-    "td",
-    "th",
-    "li"
+  const CONSENT_VENDORS =
+    /cookiebot|onetrust|ot-sdk|cookieyes|cky-consent|usercentrics|didomi|cc-window|cc-banner|cmplz|iubenda|qc-cmp|truste|osano|borlabs|cookie-law-info|cookie-notice|cookieconsent|cookie-consent|moove-gdpr/;
+  const CONSENT_TOKENS = new Set(["cmp", "consent", "cookie", "cookies", "gdpr"]);
+  const JUNK_TOKENS = new Set([
+    "ad", "ads", "adsbygoogle", "adslot", "adunit", "advert", "advertisement", "advertising", "banner",
+    "interstitial", "modal", "newsletter", "overlay", "paywall", "popup", "promo", "share", "sharing",
+    "sidebar", "signup", "social", "sponsor", "sponsored", "subscribe", "toast", "toolbar", "tooltip"
   ]);
+  const STRICT_TOKENS = new Set([
+    "breadcrumb", "breadcrumbs", "comments", "footer", "menu", "navbar", "recommended", "related", "widget"
+  ]);
+  const UI_BUTTON_TOKENS = new Set([
+    "burger", "close", "copy", "dismiss", "hamburger", "like", "next", "prev", "print", "share", "toggle"
+  ]);
+  const TOKEN_SEPARATOR = /[\s_-]+/;
+  const HIDDEN_STYLE =
+    /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse)|opacity\s*:\s*(?:0|0?\.0+|0%))\s*(?:!\s*important\s*)?(?:;|$)/i;
 
-  function preserveMeaningfulMedia(root) {
-    const images = Array.from(root.querySelectorAll("img"));
-    images.forEach((image) => {
-      if (!root.contains(image)) {
-        return;
+  function sanitize(root, { mode = "smart" } = {}) {
+    const strict = mode === "strict";
+    const warnings = new Set();
+    const stack = elementsOf(root);
+    while (stack.length) {
+      const element = stack.pop();
+      const verdict = judge(element, strict);
+      if (!verdict) {
+        stack.push(...elementsOf(element));
+        continue;
       }
-
-      const alt = (image.getAttribute("alt") || "").replace(/\s+/g, " ").trim();
-      if (!alt) {
-        image.remove();
-        return;
-      }
-
-      const marker = global.document.createElement("span");
-      marker.setAttribute("data-wm-image-alt", alt);
-      if (image.currentSrc || image.src || image.getAttribute("src")) {
-        marker.setAttribute("data-wm-image-src", image.currentSrc || image.src || image.getAttribute("src"));
-      }
-      marker.textContent = alt;
-      image.replaceWith(marker);
-    });
-
-    const inputs = Array.from(root.querySelectorAll("input[type='checkbox'], input[type='radio']"));
-    inputs.forEach((input) => {
-      if (!root.contains(input)) {
-        return;
-      }
-
-      const marker = global.document.createElement("span");
-      marker.setAttribute("data-wm-checkbox", input.checked ? "checked" : "unchecked");
-      marker.textContent = input.checked ? "[x]" : "[ ]";
-      input.replaceWith(marker);
-    });
+      if (verdict === "hidden" && element.textContent.trim()) warnings.add("hidden-content-skipped");
+      element.remove();
+    }
+    if (strict) removeLinkLists(root);
+    return { warnings: [...warnings] };
   }
 
-  function getElementSignature(element) {
-    const parts = [
-      element.id || "",
-      element.className || "",
-      element.getAttribute("role") || "",
-      element.getAttribute("aria-label") || "",
-      element.getAttribute("aria-describedby") || "",
-      element.getAttribute("title") || "",
-      element.getAttribute("name") || "",
-      element.getAttribute("data-testid") || "",
-      element.getAttribute("data-test") || ""
-    ];
+  function judge(element, strict) {
+    if (element.hasAttribute(WRAP_ATTRIBUTE)) return "";
+    const tag = element.localName;
+    if (REMOVED_TAGS.has(tag)) return "junk";
+    if (isStaticallyHidden(element)) return "hidden";
+    if (element.getAttribute("aria-hidden") === "true") return "junk";
+    if (tag === "button") return isUiButton(element) ? "junk" : "";
+    if (tag === "input") return isChoice(element) ? "" : "junk";
 
-    return parts.filter(Boolean).join(" ");
+    const role = element.getAttribute("role");
+    if (REMOVED_ROLES.has(role)) return "junk";
+    if (strict && (STRICT_ROLES.has(role) || STRICT_TAGS.has(tag)) && !isQuoteAttribution(element)) return "junk";
+    if (!CONTAINER_TAGS.has(tag)) return "";
+
+    const tokens = tokensOf(element);
+    const junk = tokens.some((token) => JUNK_TOKENS.has(token) || (strict && STRICT_TOKENS.has(token)));
+    return junk && !hasSubstantialContent(element) ? "junk" : "";
   }
 
-  function shouldRemoveBySignature(element) {
-    return JUNK_PATTERN.test(getElementSignature(element));
-  }
-
-  function shouldRemoveByStyle(element) {
+  function isStaticallyHidden(element) {
+    if (element.hasAttribute("hidden")) return true;
     const style = element.getAttribute("style");
-    return style ? STYLE_JUNK_PATTERN.test(style) : false;
+    if (style && HIDDEN_STYLE.test(style)) return true;
+    return WMExt.markdown.classesOf(element).some((name) => SCREEN_READER_CLASSES.has(name)) || isConsentBanner(element);
   }
 
-  function hasSemanticContent(element) {
-    const tag = element.tagName.toLowerCase();
-
+  function isConsentBanner(element) {
+    const signature = `${element.id} ${element.getAttribute("class") ?? ""}`.toLowerCase();
+    if (signature.length < 3) return false;
+    if (CONSENT_VENDORS.test(signature)) return true;
     return (
-      /^h[1-6]$/.test(tag) ||
-      tag === "table" ||
-      tag === "thead" ||
-      tag === "tbody" ||
-      tag === "tfoot" ||
-      tag === "tr" ||
-      tag === "th" ||
-      tag === "td" ||
-      tag === "ul" ||
-      tag === "ol" ||
-      tag === "li" ||
-      tag === "p" ||
-      tag === "pre" ||
-      tag === "code" ||
-      tag === "blockquote"
+      CONTAINER_TAGS.has(element.localName) &&
+      signature.split(TOKEN_SEPARATOR).some((token) => CONSENT_TOKENS.has(token)) &&
+      !hasSubstantialContent(element)
     );
   }
 
-  function looksLikeMostlyLinks(element) {
-    const text = (element.textContent || "").trim();
-    if (text.length < 40) {
-      return false;
-    }
-
-    const links = Array.from(element.querySelectorAll("a"));
-    if (!links.length) {
-      return false;
-    }
-
-    const linkedTextLength = links.reduce((sum, link) => sum + (link.textContent || "").trim().length, 0);
-    return linkedTextLength / Math.max(text.length, 1) > 0.7 && links.length >= 2;
+  function tokensOf(element) {
+    const signature = `${element.id} ${element.getAttribute("class") ?? ""}`.trim().toLowerCase();
+    return signature ? signature.split(TOKEN_SEPARATOR) : [];
   }
 
-  function removeEmptyNoise(root) {
-    const elements = Array.from(root.querySelectorAll("*")).reverse();
-
-    elements.forEach((element) => {
-      if (!root.contains(element)) {
-        return;
-      }
-
-      if (hasSemanticContent(element)) {
-        return;
-      }
-
-      const text = (element.textContent || "").trim();
-      if (!text && element.children.length === 0) {
-        element.remove();
-        return;
-      }
-
-      if (text.length <= 1 && element.children.length === 0) {
-        element.remove();
-      }
-    });
+  function hasSubstantialContent(element) {
+    let hasContent = false;
+    for (const child of element.querySelectorAll("h1, h2, h3, h4, h5, h6, p, pre, table, ul, ol")) {
+      if (MAJOR_HEADINGS.has(child.localName)) return true;
+      hasContent ||= CONTENT_TAGS.has(child.localName);
+    }
+    return hasContent && element.textContent.trim().length >= SUBSTANTIAL_TEXT;
   }
 
-  function isCodeContext(node) {
-    const element = node.parentElement;
-    return Boolean(element && element.closest("pre, code"));
+  function isUiButton(element) {
+    if (!element.textContent.trim()) return true;
+    return tokensOf(element).some((token) => UI_BUTTON_TOKENS.has(token));
   }
 
-  function looksLikeCssText(text) {
-    const value = String(text || "").replace(/\s+/g, " ").trim();
-    if (value.length < 40) {
-      return false;
-    }
-
-    const braceCount = (value.match(/[{}]/g) || []).length;
-    const semicolonCount = (value.match(/;/g) || []).length;
-    const colonCount = (value.match(/:/g) || []).length;
-
-    if (!CSS_TEXT_PATTERN.test(value)) {
-      return false;
-    }
-
-    return braceCount >= 2 || semicolonCount >= 2 || colonCount >= 4;
+  function isChoice(element) {
+    const type = element.getAttribute("type")?.toLowerCase();
+    return type === "checkbox" || type === "radio";
   }
 
-  function findCssBlockContainer(node, root) {
-    let current = node.parentElement;
-
-    while (current && current !== root) {
-      if (BLOCKISH_TAGS.has(current.tagName.toLowerCase())) {
-        return current;
-      }
-      current = current.parentElement;
-    }
-
-    return null;
+  function isQuoteAttribution(element) {
+    return element.localName !== "nav" && element.parentElement?.closest("blockquote, figure") != null;
   }
 
-  function removeCssLikeText(root) {
-    const walker = global.document.createTreeWalker(root, global.NodeFilter.SHOW_TEXT);
-    const targets = [];
-    let current;
-
-    while ((current = walker.nextNode())) {
-      if (isCodeContext(current)) {
-        continue;
-      }
-
-      if (!looksLikeCssText(current.textContent || "")) {
-        continue;
-      }
-
-      const container = findCssBlockContainer(current, root);
-      if (container) {
-        targets.push(container);
-        continue;
-      }
-
-      targets.push(current);
+  function removeLinkLists(root) {
+    const rootText = root.textContent.trim().length;
+    const stats = new Map();
+    const order = [];
+    const stack = [root];
+    while (stack.length) {
+      const element = stack.pop();
+      order.push(element);
+      stack.push(...elementsOf(element));
     }
 
-    targets.forEach((target) => {
-      if (target && (target === root || root.contains(target))) {
-        target.remove();
-      }
-    });
+    for (let index = order.length - 1; index >= 0; index -= 1) {
+      const element = order[index];
+      const own = collectStats(element, stats);
+      stats.set(element, own);
+      if (element !== root && isLinkList(element, own, rootText)) element.remove();
+    }
   }
 
-  function sanitizeSelectionContainer(container, options) {
-    const mode = options?.mode === "strict" ? "strict" : "smart";
-    preserveMeaningfulMedia(container);
-    const elements = [container, ...container.querySelectorAll("*")];
-
-    elements.forEach((element) => {
-      if (!(element instanceof global.Element)) {
-        return;
+  function collectStats(element, stats) {
+    const own = { text: 0, linkText: 0 };
+    for (let child = element.firstChild; child; child = child.nextSibling) {
+      if (child.nodeType === 3) {
+        own.text += child.data.trim().length;
+      } else if (stats.has(child)) {
+        const inner = stats.get(child);
+        own.text += inner.text;
+        own.linkText += child.localName === "a" ? inner.text : inner.linkText;
       }
-
-      if (element !== container && !container.contains(element)) {
-        return;
-      }
-
-      const tag = element.tagName.toLowerCase();
-      const role = (element.getAttribute("role") || "").toLowerCase();
-      const ariaHidden = element.getAttribute("aria-hidden");
-
-      if (tag === "input") {
-        element.remove();
-        return;
-      }
-
-      if (tag === "img") {
-        element.remove();
-        return;
-      }
-
-      if (ALWAYS_REMOVE_TAGS.has(tag)) {
-        element.remove();
-        return;
-      }
-
-      if (element.hasAttribute("hidden") || ariaHidden === "true") {
-        element.remove();
-        return;
-      }
-
-      if (mode !== "smart") {
-        return;
-      }
-
-      if (SMART_REMOVE_TAGS.has(tag) || SMART_ROLES.has(role)) {
-        element.remove();
-        return;
-      }
-
-      if (shouldRemoveBySignature(element) || shouldRemoveByStyle(element)) {
-        element.remove();
-        return;
-      }
-
-      if (looksLikeMostlyLinks(element) && !hasSemanticContent(element)) {
-        element.remove();
-      }
-    });
-
-    if (mode === "smart") {
-      removeCssLikeText(container);
-      removeEmptyNoise(container);
     }
+    return own;
+  }
 
-    return container;
+  function isLinkList(element, own, rootText) {
+    const tag = element.localName;
+    if ((tag !== "ul" && tag !== "ol" && tag !== "div") || element.hasAttribute(WRAP_ATTRIBUTE)) return false;
+    if (!own.text || own.linkText / own.text < LINK_LIST_RATIO || own.text >= rootText * LINK_LIST_RATIO) return false;
+
+    const items = elementsOf(element);
+    if (items.length < LINK_LIST_MIN_ITEMS) return false;
+    const lengths = items.map((item) => item.textContent.trim().length);
+    const total = lengths.reduce((sum, length) => sum + length, 0);
+    return Math.max(...lengths) <= LINK_LIST_MAX_ITEM && total / items.length <= LINK_LIST_MAX_AVERAGE;
+  }
+
+  function elementsOf(element) {
+    return WMExt.markdown.elementsOf(element);
   }
 
   WMExt.cleaner = {
-    sanitizeSelectionContainer
+    WRAP_ATTRIBUTE,
+    isStaticallyHidden,
+    sanitize
   };
-})(window);
+})();

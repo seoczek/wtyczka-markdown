@@ -9,3 +9,5 @@ dist/
 *.pem
 *.zip
 npm-debug.log*
+test-results/
+playwright-report/

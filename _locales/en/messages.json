@@ -1,0 +1,316 @@
+{
+  "extName": {
+    "message": "Wtyczka Markdown"
+  },
+  "extDescription": {
+    "message": "Turns the selected part of a page into clean Markdown and copies it to the clipboard. AI-ready sessions and tables for Google Sheets."
+  },
+  "commandConvert": {
+    "message": "Convert selection to Markdown"
+  },
+  "menuConvert": {
+    "message": "Convert selection to Markdown"
+  },
+  "buttonTitle": {
+    "message": "Convert selection to Markdown and copy"
+  },
+  "actionTitleWithCount": {
+    "message": "Wtyczka Markdown – fragments in session: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "convertButton": {
+    "message": "Convert selection"
+  },
+  "modeLabel": {
+    "message": "Cleanup mode"
+  },
+  "modeSmart": {
+    "message": "Smart"
+  },
+  "modeStrict": {
+    "message": "Strict"
+  },
+  "modeSmartHint": {
+    "message": "Smart removes ads, share buttons and hidden elements while keeping the content."
+  },
+  "modeStrictHint": {
+    "message": "Strict also cuts navigation, footers and sidebars."
+  },
+  "collectLabel": {
+    "message": "Collect into session"
+  },
+  "tabsLabel": {
+    "message": "Views"
+  },
+  "tabResult": {
+    "message": "Result"
+  },
+  "tabSession": {
+    "message": "Session"
+  },
+  "tabSettings": {
+    "message": "Settings"
+  },
+  "onboardingTitle": {
+    "message": "How it works"
+  },
+  "onboardingStep1": {
+    "message": "Select some text on any page."
+  },
+  "onboardingStep2": {
+    "message": "Click the MD button next to the selection, press the keyboard shortcut or use the button above."
+  },
+  "onboardingStep3": {
+    "message": "The Markdown lands in your clipboard. Paste it anywhere."
+  },
+  "outputLabel": {
+    "message": "Markdown result (you can edit it)"
+  },
+  "copy": {
+    "message": "Copy"
+  },
+  "copied": {
+    "message": "Copied to clipboard."
+  },
+  "addToSession": {
+    "message": "Add to session"
+  },
+  "addedToSession": {
+    "message": "Added to session."
+  },
+  "alreadyInSession": {
+    "message": "This fragment is already in the session."
+  },
+  "copyTable": {
+    "message": "Table → Sheets"
+  },
+  "copyTables": {
+    "message": "Tables ($ARG1$) → Sheets",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "copyTableHint": {
+    "message": "Copies the table as TSV. Paste it into Google Sheets or Excel."
+  },
+  "tableCopied": {
+    "message": "Table copied. Paste it into Google Sheets or Excel."
+  },
+  "sessionEmptyTitle": {
+    "message": "The session is empty"
+  },
+  "sessionEmptyText": {
+    "message": "Turn on “Collect into session” or click “Add to session” next to a result. Copy all collected fragments at once, e.g. into Claude."
+  },
+  "openEntry": {
+    "message": "Show in the Result tab"
+  },
+  "remove": {
+    "message": "Remove"
+  },
+  "removeEntry": {
+    "message": "Remove fragment: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "entryRemoved": {
+    "message": "Fragment removed."
+  },
+  "sessionCleared": {
+    "message": "Session cleared."
+  },
+  "undo": {
+    "message": "Undo"
+  },
+  "aiInstructionLabel": {
+    "message": "Instruction for the AI (optional)"
+  },
+  "aiInstructionPlaceholder": {
+    "message": "E.g. Draft an article outline based on the documents."
+  },
+  "aiPresetLabel": {
+    "message": "Ready-made instructions"
+  },
+  "aiPresetNone": {
+    "message": "Insert a ready-made instruction…"
+  },
+  "aiPresetSummaryName": {
+    "message": "Summary"
+  },
+  "aiPresetSummary": {
+    "message": "Summarize the documents above. List the key takeaways as bullet points and cite the source document number for each."
+  },
+  "aiPresetFactsName": {
+    "message": "Facts and figures"
+  },
+  "aiPresetFacts": {
+    "message": "Extract concrete facts, figures and dates from the documents above. For each one, give a verbatim quote and the document number. Do not add information that is not in the documents."
+  },
+  "aiPresetCompareName": {
+    "message": "Compare sources"
+  },
+  "aiPresetCompare": {
+    "message": "Compare the documents above: where they agree, where they differ and what each one is missing. Answer with a Markdown table followed by a short summary."
+  },
+  "copyForAi": {
+    "message": "Copy for AI"
+  },
+  "copyForAiHint": {
+    "message": "Fragments grouped by source in <document> tags, the format recommended for Claude. The instruction goes at the end."
+  },
+  "copiedForAi": {
+    "message": "Session copied for AI. Paste it into Claude or another chat."
+  },
+  "copyMarkdown": {
+    "message": "Copy Markdown"
+  },
+  "downloadMd": {
+    "message": "Download .md"
+  },
+  "clearSession": {
+    "message": "Clear"
+  },
+  "fragments": {
+    "message": "$ARG1$ fragments",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "words": {
+    "message": "$ARG1$ words",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "tokens": {
+    "message": "≈$ARG1$ tokens",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "showButtonLabel": {
+    "message": "Show the MD button next to selections"
+  },
+  "excludeSiteLabel": {
+    "message": "Hide the button on $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "excludedTitle": {
+    "message": "Excluded domains"
+  },
+  "excludedHint": {
+    "message": "The MD button won't appear on these sites or their subdomains. The shortcut and context menu keep working."
+  },
+  "excludedEmpty": {
+    "message": "None. The button works everywhere."
+  },
+  "excludePlaceholder": {
+    "message": "e.g. docs.google.com"
+  },
+  "add": {
+    "message": "Add"
+  },
+  "removeDomain": {
+    "message": "Remove domain $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorDomain": {
+    "message": "That doesn't look like a valid domain."
+  },
+  "shortcutTitle": {
+    "message": "Keyboard shortcut"
+  },
+  "shortcutHint": {
+    "message": "Conversion shortcut. Change it in the Settings tab."
+  },
+  "shortcutMissing": {
+    "message": "Not set (e.g. conflict with another extension)"
+  },
+  "change": {
+    "message": "Change"
+  },
+  "converting": {
+    "message": "Converting…"
+  },
+  "statusReady": {
+    "message": "Select text on the page and click “Convert selection”."
+  },
+  "statusLastResult": {
+    "message": "Your last result is below. Select new text to replace it."
+  },
+  "toastCopied": {
+    "message": "Markdown copied ($ARG1$).",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "toastCopiedAndSaved": {
+    "message": "Copied and added to session ($ARG1$, fragments in session: $ARG2$).",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      },
+      "arg2": {
+        "content": "$2"
+      }
+    }
+  },
+  "toastDuplicate": {
+    "message": "Copied. This fragment is already in the session."
+  },
+  "toastNearQuota": {
+    "message": "The session is close to the storage limit: copy it and clear it."
+  },
+  "toastSaveFailed": {
+    "message": "Copied, but saving to the session failed. Copy and clear the session."
+  },
+  "toastCopyFailed": {
+    "message": "Copying failed. Open the extension window: the result is waiting in the Result tab."
+  },
+  "toastCopyFailedPopup": {
+    "message": "Couldn't copy to the clipboard."
+  },
+  "errorNoSelection": {
+    "message": "Select some text on the page first."
+  },
+  "errorEmpty": {
+    "message": "The selection has no content to convert."
+  },
+  "errorRestricted": {
+    "message": "Chrome doesn't allow extensions to read this page (e.g. chrome://, Chrome Web Store, PDF viewer)."
+  },
+  "errorFileAccess": {
+    "message": "To work on local files, turn on “Allow access to file URLs” in the extension details."
+  },
+  "errorGeneric": {
+    "message": "Something went wrong. Reload the page and try again."
+  },
+  "errorSettings": {
+    "message": "Couldn't save the settings."
+  }
+}

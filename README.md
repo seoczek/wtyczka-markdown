@@ -2,117 +2,81 @@
 
 ![Wtyczka Markdown - konwersja zaznaczenia do Markdown](assets/readme/hero.png)
 
-**Wtyczka Markdown** to rozszerzenie Chrome, które zamienia zaznaczony fragment strony internetowej na czysty Markdown i kopiuje wynik do schowka.
-
-Przydaje się do szybkiego zbierania treści z artykułów, dokumentacji, opisów produktów, researchu SEO, notatek i pracy z narzędziami AI.
+**Wtyczka Markdown** to rozszerzenie Chrome, które zamienia zaznaczony fragment strony na czysty Markdown i od razu kopiuje go do schowka. Zbiera też fragmenty z wielu stron w jedną sesję, gotową do wklejenia do Claude lub innego asystenta AI.
 
 ## Najważniejsze funkcje
 
-- Konwersja zaznaczonego fragmentu strony do Markdown.
-- Kopiowanie wyniku do schowka jednym kliknięciem.
-- Zbieranie wielu fragmentów do jednej sesji Markdown.
-- Kopiowanie całej sesji jednym przyciskiem.
-- Pływający przycisk `MD` przy zaznaczeniu tekstu.
-- Obsługa popupu, skrótu klawiszowego i menu kontekstowego.
-- Możliwość edycji skrótu w ustawieniach Chrome.
-- Czyszczenie reklam, popupów, widgetów i zbędnych elementów strony.
-- Obsługa nagłówków, list, linków, cytatów, tabel i bloków kodu.
-- Działanie lokalne, bez wysyłania treści na zewnętrzne serwery.
+- **Zaznacz → `MD` → wklej.** Przycisk `MD` pojawia się przy zaznaczeniu. Działa też skrót klawiszowy, menu kontekstowe i popup.
+- **Czysty wynik.** Nagłówki, listy, linki, cytaty, tabele, kod, checklisty i `details` bez reklam, przycisków udostępniania i ukrytych elementów.
+- **Dwa tryby czyszczenia.** Smart usuwa szum i zostawia treść. Strict dodatkowo wycina nawigację, stopki i boksy poboczne.
+- **Tabela → Arkusze.** Kopiuje zaznaczoną tabelę jako TSV, więc wkleja się do Google Sheets lub Excela od razu w komórki.
+- **Sesja dla AI.** Tryb „Zbieraj do sesji” odkłada kolejne fragmenty. Przycisk „Kopiuj dla AI” składa je w bloki `<document>` pogrupowane według źródeł, z własną instrukcją na końcu i szacunkiem tokenów. Sesję można też skopiować jako Markdown albo pobrać jako plik `.md`.
+- **Licznik na ikonie.** Liczba zebranych fragmentów widoczna na ikonie rozszerzenia.
+- **Wyłączanie na domenach.** Przycisk `MD` można ukryć na wybranych stronach, np. w panelach CMS albo poczcie.
+- **Ramki i pola tekstowe.** Działa w `iframe` i w zaznaczeniu wewnątrz `textarea`.
+- **Polski i angielski.** Interfejs dopasowuje się do języka przeglądarki.
+- **Lokalnie i prywatnie.** Nic nie opuszcza przeglądarki.
 
-## Zastosowanie
+## Jak zacząć
 
-Wtyczka sprawdzi się, gdy chcesz szybko skopiować treść strony jako Markdown do:
+1. Zaznacz fragment tekstu na stronie.
+2. Kliknij `MD` przy zaznaczeniu albo naciśnij `Ctrl+Shift+Y` (`Control+Shift+Y` na macOS).
+3. Wklej wynik tam, gdzie potrzebujesz.
 
-- notatek,
-- dokumentacji,
-- edytora Markdown,
-- systemu CMS,
-- narzędzi AI,
-- researchu SEO i content marketingu,
-- analizy treści konkurencji.
+Chcesz zebrać materiał z kilku stron? W popupie włącz **Zbieraj do sesji**, zaznaczaj kolejne fragmenty, a na koniec otwórz kartę **Sesja** i kliknij **Kopiuj dla AI**.
+
+Skrót zmienisz w popupie: **Ustawienia → Skrót → Zmień**.
 
 ## Jak wygląda
 
 ![Podgląd funkcji Wtyczki Markdown](assets/readme/features.png)
 
-## Jak używać
+## Instalacja
 
-1. Zaznacz fragment tekstu na stronie.
-2. Kliknij pływający przycisk `MD`, użyj popupu, skrótu klawiszowego albo menu kontekstowego.
-3. Wklej skopiowany Markdown tam, gdzie chcesz.
-4. Jeśli chcesz zebrać więcej fragmentów, włącz tryb **Zbieraj do sesji**.
+1. Pobierz paczkę ZIP z zakładki [Releases](https://github.com/seoczek/wtyczka-markdown/releases) albo sklonuj repozytorium.
+2. Otwórz `chrome://extensions` i włącz **Tryb dewelopera**.
+3. Kliknij **Załaduj rozpakowane** i wskaż folder rozszerzenia.
 
-## Instalacja w Chrome
+Działa w Chrome 116+ i przeglądarkach na Chromium (Edge, Brave, Opera, Vivaldi, Arc). Na plikach lokalnych (`file://`) włącz w szczegółach rozszerzenia **Zezwalaj na dostęp do adresów URL plików**.
 
-Na ten moment wtyczka jest dostępna jako rozszerzenie ładowane ręcznie.
-
-1. Pobierz albo sklonuj repozytorium.
-2. Otwórz w Chrome: `chrome://extensions`
-3. Włącz **Tryb dewelopera**.
-4. Kliknij **Załaduj rozpakowane**.
-5. Wybierz folder projektu.
-
-Jeśli testujesz lokalny plik `test-page.html`, wejdź w szczegóły rozszerzenia i włącz dostęp do adresów `file://`.
+Po instalacji lub aktualizacji przycisk `MD` działa od razu na otwartych kartach, bez odświeżania.
 
 ## Prywatność
 
-Wtyczka działa lokalnie w przeglądarce.
-
-- Nie wysyła zaznaczonych treści na serwer.
-- Nie korzysta z zewnętrznego API.
-- Nie używa AI do przetwarzania treści.
-- Sesja zbierania fragmentów jest zapisywana lokalnie w Chrome.
-- Schowek jest używany tylko wtedy, gdy uruchomisz kopiowanie lub konwersję.
+- Konwersja odbywa się lokalnie. Rozszerzenie nie wysyła treści, adresów ani ustawień na żaden serwer.
+- Sesja jest zapisywana w pamięci lokalnej Chrome, dopóki jej nie wyczyścisz.
+- Schowek jest używany tylko po Twojej akcji.
 
 ## Uprawnienia
 
-Rozszerzenie używa następujących uprawnień Chrome:
+| Uprawnienie | Po co |
+|---|---|
+| `<all_urls>` | Przycisk `MD` przy zaznaczeniu na każdej stronie i konwersja w ramkach. |
+| `scripting` | Silnik konwersji ładuje się dopiero po kliknięciu, więc nie spowalnia stron. |
+| `offscreen`, `clipboardWrite` | Niezawodne kopiowanie do schowka ze skrótu i menu kontekstowego. |
+| `contextMenus` | Pozycja „Konwertuj zaznaczenie na Markdown” w menu po zaznaczeniu. |
+| `storage` | Ustawienia, sesja i ostatni wynik. |
 
-- `activeTab` - dostęp do aktywnej karty po akcji użytkownika.
-- `contextMenus` - menu kontekstowe po zaznaczeniu tekstu.
-- `storage` - zapis ustawień i sesji.
-- `clipboardWrite` - kopiowanie Markdown do schowka.
-- `<all_urls>` - działanie na różnych stronach internetowych.
-
-Uprawnienie `<all_urls>` jest zostawione w pierwszej wersji, żeby popup, skrót, menu kontekstowe i pływający przycisk działały spójnie na zwykłych stronach. Chrome nadal blokuje rozszerzenia na stronach systemowych, Chrome Web Store i części specjalnych widoków.
-
-## Informacje techniczne
-
-Wtyczka jest rozszerzeniem Chrome zgodnym z **Manifest V3**.
-
-Projekt nie używa zewnętrznych zależności runtime do konwersji Markdown. Logika działa lokalnie w content scriptach i popupie rozszerzenia.
+Chrome nie pozwala rozszerzeniom działać na stronach systemowych (`chrome://`), w Chrome Web Store i w przeglądarce PDF. Wtyczka sygnalizuje to wtedy czerwonym „!” na ikonie (a w popupie komunikatem), zamiast milczeć.
 
 ## Development
 
-Wymagania:
-
-- Node.js
-- npm
-
-Instalacja zależności:
+Wymagania: Node.js 20+ i npm.
 
 ```bash
 npm install
-```
-
-Pełna weryfikacja:
-
-```bash
 npm run verify
 ```
 
-Komenda sprawdza:
+| Skrypt | Co robi |
+|---|---|
+| `npm run lint` | ESLint oraz spójność manifestu, plików i tłumaczeń. |
+| `npm test` | Testy silnika konwersji i warstwy rozszerzenia (Vitest + jsdom). |
+| `npm run verify` | Lint, testy i `npm audit`. |
+| `npm run test:e2e` | Testy w prawdziwym Chromium z załadowanym rozszerzeniem (Playwright). |
+| `npm run pack` | Paczka `dist/wtyczka-markdown-<wersja>.zip` gotowa do Chrome Web Store. |
 
-- poprawność manifestu i składni JavaScript,
-- podstawowy lint runtime,
-- testy automatyczne,
-- podatności zależności przez `npm audit`.
-
-## Status
-
-Aktualna wersja: `0.1.1`
-
-Projekt jest na etapie pierwszej wersji open source. Działa lokalnie jako rozszerzenie ładowane ręcznie w Chrome.
+Do testów ręcznych służy `test-page.html` z typowymi przypadkami: szum CMS, tabele, ramka `iframe`, pole tekstowe.
 
 ## License
 

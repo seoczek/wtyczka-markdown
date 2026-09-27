@@ -1,77 +1,125 @@
 <!doctype html>
-<html lang="pl">
+<html>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Wtyczka Markdown</title>
+    <meta name="color-scheme" content="light dark" />
+    <title data-i18n="extName">Wtyczka Markdown</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <main class="shell">
-      <header class="topbar">
-        <div>
-          <div class="eyebrow">Wtyczka Markdown</div>
-          <h1 id="title">Zaznaczenie do Markdown</h1>
-        </div>
-        <button id="shortcutBtn" class="shortcut" type="button" title="Zmień skrót w ustawieniach Chrome">
-          <span id="shortcutLabel">Ctrl/Control + Shift + Y</span>
-          <span class="shortcut-action">Edytuj</span>
-        </button>
-      </header>
+    <header class="bar">
+      <img src="assets/icons/icon-32.png" alt="" width="20" height="20" />
+      <h1 data-i18n="extName">Wtyczka Markdown</h1>
+      <kbd id="shortcut" class="shortcut" hidden></kbd>
+    </header>
 
-      <section class="panel controls-panel" aria-label="Akcje">
+    <section class="card">
+      <button id="convert" class="primary" type="button" data-i18n="convertButton"></button>
+      <div class="row">
+        <div class="segmented" role="radiogroup" data-i18n-aria-label="modeLabel">
+          <label><input type="radio" name="mode" value="smart" /><span data-i18n="modeSmart"></span></label>
+          <label><input type="radio" name="mode" value="strict" /><span data-i18n="modeStrict"></span></label>
+        </div>
         <label class="switch">
-          <input id="collectMode" type="checkbox" />
-          <span class="switch-track" aria-hidden="true"></span>
-          <span class="switch-label">Zbieraj do sesji</span>
+          <input id="collectMode" type="checkbox" role="switch" />
+          <span class="track" aria-hidden="true"></span>
+          <span data-i18n="collectLabel"></span>
         </label>
+      </div>
+      <p id="modeHint" class="hint"></p>
+    </section>
 
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <div class="tabs" role="tablist" data-i18n-aria-label="tabsLabel">
+      <button id="tab-result" role="tab" type="button" aria-controls="panel-result" data-i18n="tabResult"></button>
+      <button id="tab-session" role="tab" type="button" aria-controls="panel-session">
+        <span data-i18n="tabSession"></span> <span id="sessionCount" class="count" hidden></span>
+      </button>
+      <button id="tab-settings" role="tab" type="button" aria-controls="panel-settings" data-i18n="tabSettings"></button>
+    </div>
+
+    <section id="panel-result" class="panel" role="tabpanel" aria-labelledby="tab-result" tabindex="0">
+      <div id="onboarding" class="empty">
+        <p class="empty-title" data-i18n="onboardingTitle"></p>
+        <ol>
+          <li data-i18n="onboardingStep1"></li>
+          <li data-i18n="onboardingStep2"></li>
+          <li data-i18n="onboardingStep3"></li>
+        </ol>
+      </div>
+      <textarea id="output" class="output" spellcheck="false" data-i18n-aria-label="outputLabel" hidden></textarea>
+      <div id="resultTools" class="toolbar" hidden>
+        <span id="resultMeta" class="meta"></span>
+        <div class="buttons">
+          <button id="copyTable" class="secondary" type="button" hidden></button>
+          <button id="addToSession" class="secondary" type="button" data-i18n="addToSession"></button>
+          <button id="copyResult" class="secondary" type="button" data-i18n="copy"></button>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-session" class="panel" role="tabpanel" aria-labelledby="tab-session" tabindex="0" hidden>
+      <div id="sessionEmpty" class="empty">
+        <p class="empty-title" data-i18n="sessionEmptyTitle"></p>
+        <p data-i18n="sessionEmptyText"></p>
+      </div>
+      <div id="sessionContent" hidden>
+        <ul id="entries" class="entries"></ul>
+        <details class="instruction">
+          <summary data-i18n="aiInstructionLabel"></summary>
+          <select id="preset" data-i18n-aria-label="aiPresetLabel">
+            <option value="" data-i18n="aiPresetNone"></option>
+            <option value="aiPresetSummary" data-i18n="aiPresetSummaryName"></option>
+            <option value="aiPresetFacts" data-i18n="aiPresetFactsName"></option>
+            <option value="aiPresetCompare" data-i18n="aiPresetCompareName"></option>
+          </select>
+          <textarea id="aiInstruction" rows="3" maxlength="2000" data-i18n-placeholder="aiInstructionPlaceholder" data-i18n-aria-label="aiInstructionLabel"></textarea>
+        </details>
+        <p id="sessionMeta" class="meta"></p>
         <div class="actions">
-          <button id="convertBtn" class="primary" type="button">
-            Konwertuj zaznaczenie
-          </button>
-          <button id="captureBtn" class="secondary" type="button" disabled>
-            Dodaj wynik do sesji
-          </button>
-          <button id="copyBtn" class="secondary" type="button" disabled>
-            Kopiuj widok
-          </button>
+          <button id="copyAi" class="primary" type="button" data-i18n="copyForAi" data-i18n-title="copyForAiHint"></button>
+          <button id="copyMarkdown" class="secondary" type="button" data-i18n="copyMarkdown"></button>
+          <button id="download" class="secondary" type="button" data-i18n="downloadMd"></button>
+          <button id="clearSession" class="ghost danger" type="button" data-i18n="clearSession"></button>
         </div>
+      </div>
+    </section>
 
-        <div class="session-actions">
-          <button id="copySessionBtn" class="secondary session-copy" type="button" disabled>
-            Kopiuj całą sesję
-          </button>
-          <button id="clearSessionBtn" class="secondary ghost" type="button" disabled>
-            Wyczyść sesję
-          </button>
+    <section id="panel-settings" class="panel settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
+      <label class="switch">
+        <input id="showButton" type="checkbox" role="switch" />
+        <span class="track" aria-hidden="true"></span>
+        <span data-i18n="showButtonLabel"></span>
+      </label>
+      <label id="siteToggle" class="check" hidden>
+        <input id="excludeSite" type="checkbox" />
+        <span id="excludeSiteLabel"></span>
+      </label>
+      <div class="field">
+        <p class="field-title" data-i18n="excludedTitle"></p>
+        <p class="hint" data-i18n="excludedHint"></p>
+        <ul id="excludedList" class="chips"></ul>
+        <form id="excludeForm" class="inline-form">
+          <input id="excludeInput" type="text" inputmode="url" autocomplete="off" spellcheck="false" data-i18n-placeholder="excludePlaceholder" data-i18n-aria-label="excludePlaceholder" />
+          <button class="secondary" type="submit" data-i18n="add"></button>
+        </form>
+      </div>
+      <div class="field">
+        <p class="field-title" data-i18n="shortcutTitle"></p>
+        <div class="inline-form">
+          <span id="shortcutValue" class="meta"></span>
+          <button id="editShortcut" class="secondary" type="button" data-i18n="change"></button>
         </div>
+      </div>
+    </section>
 
-        <div id="status" class="status" role="status" aria-live="polite">
-          Gotowe. Zaznacz tekst na stronie i kliknij konwersję.
-        </div>
-      </section>
+    <div id="snackbar" class="snackbar" role="status" hidden>
+      <span id="snackbarText"></span>
+      <button id="undo" type="button" data-i18n="undo"></button>
+    </div>
 
-      <section class="panel preview" aria-label="Podgląd Markdown">
-        <div class="panel-head">
-          <h2>Podgląd</h2>
-          <span id="meta" class="meta">Brak wyniku</span>
-        </div>
-        <div class="preview-tabs" role="tablist" aria-label="Widok podglądu">
-          <button id="resultViewBtn" class="view-toggle active" type="button">Wynik</button>
-          <button id="sessionViewBtn" class="view-toggle" type="button">Sesja</button>
-        </div>
-        <textarea
-          id="markdownOutput"
-          class="output"
-          rows="18"
-          readonly
-          spellcheck="false"
-          placeholder="Tutaj pojawi się Markdown z zaznaczonego fragmentu."
-        ></textarea>
-      </section>
-    </main>
-
+    <script src="src/settings.js"></script>
     <script src="src/session.js"></script>
     <script src="popup.js"></script>
   </body>

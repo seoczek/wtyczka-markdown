@@ -1,68 +1,57 @@
-(function (global) {
-  const WMExt = (global.WMExt = global.WMExt || {});
+(() => {
+  const WMExt = (globalThis.WMExt ??= {});
   const STORAGE_KEY = "wm-settings";
-  const DEFAULT_SETTINGS = {
-    collectMode: false
-  };
+  const MAX_INSTRUCTION_LENGTH = 2000;
+  const DEFAULTS = Object.freeze({
+    collectMode: false,
+    mode: "smart",
+    showButton: true,
+    excludedDomains: Object.freeze([]),
+    aiInstruction: ""
+  });
 
-  function normalizeSettings(input) {
-    const settings = input && typeof input === "object" ? input : {};
+  function normalizeDomain(value) {
+    const raw = String(value ?? "").trim().toLowerCase().replace(/^\*\./, "");
+    if (!raw) return "";
+    try {
+      const { hostname } = new URL(raw.includes("://") ? raw : `http://${raw}`);
+      return hostname.replace(/^www\./, "");
+    } catch {
+      return "";
+    }
+  }
 
+  function normalize(input) {
+    const value = input && typeof input === "object" ? input : {};
+    const domains = Array.isArray(value.excludedDomains) ? value.excludedDomains.map(normalizeDomain) : [];
     return {
-      collectMode:
-        typeof settings.collectMode === "boolean" ? settings.collectMode : DEFAULT_SETTINGS.collectMode
+      collectMode: typeof value.collectMode === "boolean" ? value.collectMode : DEFAULTS.collectMode,
+      mode: value.mode === "strict" ? "strict" : "smart",
+      showButton: typeof value.showButton === "boolean" ? value.showButton : DEFAULTS.showButton,
+      excludedDomains: [...new Set(domains.filter(Boolean))].sort(),
+      aiInstruction: typeof value.aiInstruction === "string" ? value.aiInstruction.slice(0, MAX_INSTRUCTION_LENGTH) : ""
     };
   }
 
-  function loadSettings() {
-    return new Promise((resolve) => {
-      if (!global.chrome?.storage?.sync) {
-        resolve({ ...DEFAULT_SETTINGS });
-        return;
-      }
-
-      global.chrome.storage.sync.get(STORAGE_KEY, (result) => {
-        if (global.chrome.runtime?.lastError) {
-          resolve({ ...DEFAULT_SETTINGS });
-          return;
-        }
-
-        resolve(normalizeSettings(result[STORAGE_KEY]));
-      });
-    });
+  function isExcluded(hostname, excludedDomains) {
+    const host = String(hostname ?? "").toLowerCase().replace(/^www\./, "");
+    return Boolean(host) && excludedDomains.some((domain) => host === domain || host.endsWith(`.${domain}`));
   }
 
-  function saveSettings(settings) {
-    const normalized = normalizeSettings(settings);
-
-    return new Promise((resolve, reject) => {
-      if (!global.chrome?.storage?.sync) {
-        resolve(normalized);
-        return;
-      }
-
-      global.chrome.storage.sync.set({ [STORAGE_KEY]: normalized }, () => {
-        if (global.chrome.runtime?.lastError) {
-          reject(new Error(global.chrome.runtime.lastError.message || "Nie udało się zapisać ustawień."));
-          return;
-        }
-
-        resolve(normalized);
-      });
-    });
+  async function load() {
+    try {
+      const stored = await chrome.storage.sync.get(STORAGE_KEY);
+      return normalize(stored[STORAGE_KEY]);
+    } catch {
+      return normalize();
+    }
   }
 
-  async function updateSettings(patch) {
-    const current = await loadSettings();
-    return saveSettings({ ...current, ...patch });
+  async function update(patch) {
+    const next = normalize({ ...(await load()), ...patch });
+    await chrome.storage.sync.set({ [STORAGE_KEY]: next });
+    return next;
   }
 
-  WMExt.settings = {
-    STORAGE_KEY,
-    DEFAULT_SETTINGS,
-    normalizeSettings,
-    loadSettings,
-    saveSettings,
-    updateSettings
-  };
-})(window);
+  WMExt.settings = { STORAGE_KEY, DEFAULTS, normalize, normalizeDomain, isExcluded, load, update };
+})();
